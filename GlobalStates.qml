@@ -454,9 +454,18 @@ Singleton {
         const connected = Quickshell.screens
             .map(screen => String(screen?.name ?? ""))
             .filter(name => name.length > 0)
-        if (!Array.isArray(allowedOutputs) || allowedOutputs.length === 0)
+        /**
+         * Upstream bugfix (not KWin-specific): screen lists arrive from Config as
+         * QML `list<string>` properties, and under Qt 6 those are sequence
+         * objects, not JS arrays, so the original `Array.isArray(allowedOutputs)`
+         * guard was always false and every configured screenList was silently
+         * ignored — sidebars opened on whichever monitor had focus. Array.from()
+         * accepts both real arrays and QML sequences.
+         */
+        const allowed = allowedOutputs ? Array.from(allowedOutputs) : []
+        if (allowed.length === 0)
             return connected
-        const enabled = connected.filter(name => allowedOutputs.includes(name))
+        const enabled = connected.filter(name => allowed.includes(name))
         return enabled.length > 0 ? enabled : connected
     }
 

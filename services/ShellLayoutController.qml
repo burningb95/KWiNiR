@@ -207,12 +207,16 @@ Singleton {
     }
 
     function _outputEnabled(configuredOutputs: var, outputName: string): bool {
-        if (!Array.isArray(configuredOutputs) || configuredOutputs.length === 0)
+        // Upstream bugfix, same as GlobalStates.connectedOutputNames(): Config
+        // screen lists are QML list<string> sequences, which Array.isArray()
+        // rejects under Qt 6, so every configured screenList was ignored here.
+        const configured = configuredOutputs ? Array.from(configuredOutputs) : []
+        if (configured.length === 0)
             return true
-        if (outputName.length > 0 && configuredOutputs.includes(outputName))
+        if (outputName.length > 0 && configured.includes(outputName))
             return true
         const currentNames = Quickshell.screens.map(screen => screen?.name ?? "")
-        return !configuredOutputs.some(name => currentNames.includes(name))
+        return !configured.some(name => currentNames.includes(name))
     }
 
     function _applyInset(insets: var, edge: string, thickness: real): void {
