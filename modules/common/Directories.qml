@@ -68,7 +68,12 @@ Singleton {
     property string booruDownloads: Config.options?.sidebar?.booru?.downloadPath?.sfw || Directories.wallpapersPath
     property string booruDownloadsNsfw: Config.options?.sidebar?.booru?.downloadPath?.nsfw || `${Directories.wallpapersPath}/🌶️`
     property string latexOutput: `${Directories.cachePath}/media/latex`
-    property string shellConfig: `${Directories.configPath}/illogical-impulse`
+    /**
+     * KWin port: this standalone bar keeps its own config dir so it never
+     * shares state with an iNiR install (the stock path
+     * ~/.config/illogical-impulse is a symlink into ~/.config/inir).
+     */
+    property string shellConfig: `${Directories.configPath}/pillbar`
     property string shellConfigName: "config.json"
     property string shellConfigPath: `${Directories.shellConfig}/${Directories.shellConfigName}`
     property string updateLogPath: `${Directories.stateUserPath}/update.log`
