@@ -438,7 +438,9 @@ Singleton {
     // follows the compositor and only falls back when focus cannot be resolved.
     readonly property var focusedScreen: {
         let name = ""
-        if (CompositorService.isNiri)
+        if (CompositorService.isKWin)
+            name = KWinService.currentOutput ?? ""
+        else if (CompositorService.isNiri)
             name = NiriService.currentOutput ?? ""
         else if (CompositorService.isHyprland)
             name = Hyprland.focusedMonitor?.name ?? ""

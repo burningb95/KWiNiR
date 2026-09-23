@@ -43,3 +43,4 @@ singleton WallpaperListener 1.0 WallpaperListener.qml
 singleton Wallpapers 1.0 Wallpapers.qml
 singleton Weather 1.0 Weather.qml
 singleton YtMusic 1.0 YtMusic.qml
+singleton KWinService 1.0 KWinService.qml

@@ -11,9 +11,13 @@ Singleton {
 
     property bool isHyprland: false
     property bool isNiri: false
+    /** KWin port: true in a KDE Plasma / KWin Wayland session. */
+    property bool isKWin: false
 
     readonly property string hyprlandSignature: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
     readonly property string niriSocket: Quickshell.env("NIRI_SOCKET")
+    readonly property string kdeSession: Quickshell.env("KDE_FULL_SESSION")
+    readonly property string xdgDesktop: Quickshell.env("XDG_CURRENT_DESKTOP")
 
     property var sortedToplevels: []
 
@@ -398,11 +402,28 @@ Singleton {
             return
         }
 
+        /**
+         * KWin port: neither Hyprland nor niri. Detect KWin explicitly instead
+         * of leaving both flags false, which used to send workspace consumers
+         * down the Hyprland branch and yield an empty dot row.
+         */
+        if ((kdeSession && kdeSession.length > 0)
+            || (xdgDesktop && xdgDesktop.toLowerCase().indexOf("kde") !== -1)) {
+            isKWin = true
+            isHyprland = false
+            isNiri = false
+            console.info("CompositorService: Detected KWin (Plasma session)")
+            return
+        }
+
         isHyprland = false
         isNiri = false
+        isKWin = false
     }
 
     function powerOffMonitors() {
+        if (isKWin)
+            return KWinService.powerOffMonitors()
         if (isNiri)
             return NiriService.powerOffMonitors()
         if (isHyprland)
@@ -411,6 +432,8 @@ Singleton {
     }
 
     function powerOnMonitors() {
+        if (isKWin)
+            return KWinService.powerOnMonitors()
         if (isNiri)
             return NiriService.powerOnMonitors()
         if (isHyprland)

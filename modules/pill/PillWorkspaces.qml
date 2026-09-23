@@ -32,6 +32,20 @@ Item {
      * keys on the workspace index, Hyprland on the workspace id.
      */
     readonly property var slots: {
+        /**
+         * KWin port: virtual desktops are global, not per-output, so there is no
+         * output filter here (every desktop exists on every monitor) and no
+         * trailing-empty-workspace trim, because KWin never creates or destroys
+         * desktops on its own. Shape is identical to the other branches, so the
+         * delegate, slotCenterX() and Ame's anchor are unchanged.
+         */
+        if (CompositorService.isKWin) {
+            const all = KWinService.allWorkspaces ?? [];
+            return all.slice()
+                .sort((a, b) => a.idx - b.idx)
+                .map(w => ({ key: w.idx, active: w.is_focused === true }));
+        }
+
         if (CompositorService.isNiri) {
             const all = NiriService.allWorkspaces ?? [];
             const mine = all
@@ -70,7 +84,7 @@ Item {
     }
 
     readonly property int hyprActiveId: {
-        if (CompositorService.isNiri)
+        if (CompositorService.isNiri || CompositorService.isKWin)
             return -1;
         const mons = Hyprland.monitors?.values ?? [];
         for (let i = 0; i < mons.length; i++)
@@ -82,7 +96,9 @@ Item {
     readonly property int activeIndex: slots.findIndex(sl => sl.active)
 
     function focusSlot(key) {
-        if (CompositorService.isNiri)
+        if (CompositorService.isKWin)
+            KWinService.switchToWorkspace(key);
+        else if (CompositorService.isNiri)
             NiriService.switchToWorkspace(key);
         else
             Hyprland.dispatch("workspace " + key);
