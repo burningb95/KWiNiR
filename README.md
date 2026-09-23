@@ -47,6 +47,7 @@ systemctl --user daemon-reload && systemctl --user enable --now pillbar
 ```
 
 Configuration lives at `~/.config/pillbar/config.json` (iNiR's schema, created on first run).
+For the sidebar avatar, put any image at `~/.config/pillbar/avatar.png` (or `.jpg`).
 
 ### Hotkeys
 

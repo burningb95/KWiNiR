@@ -49,8 +49,16 @@ Singleton {
     property string userAvatarPathAccountsService: FileUtils.trimFileProtocol(`/var/lib/AccountsService/icons/${SystemInfo.username}`)
     property string userAvatarPathRicersAndWeirdSystems: `${Directories.homePath}/.face`
     property string userAvatarPathRicersAndWeirdSystems2: `${Directories.homePath}/.face.icon`
+    /**
+     * KWin port: a bar-only avatar, tried first. The other three are the
+     * account picture Plasma and SDDM also show, so setting one of those just
+     * for this sidebar would change the login screen too. No suffix: Qt's
+     * image loader probes known extensions, so avatar.png / avatar.jpg both work.
+     */
+    property string userAvatarPathPillbar: `${Directories.shellConfig}/avatar`
     property int userAvatarRevision: 0
     readonly property var userAvatarPaths: [
+        userAvatarPathPillbar,
         userAvatarPathAccountsService,
         userAvatarPathRicersAndWeirdSystems,
         userAvatarPathRicersAndWeirdSystems2

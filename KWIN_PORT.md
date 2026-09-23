@@ -249,10 +249,14 @@ Transparency (`appearance.transparency` in `~/.config/pillbar/config.json`):
 
 `~/.local/share/Fancy-Floating-Bar/REVERT-pillbar.sh`
 
-## Hotkeys (KWin port)
+## Assets and avatar (KWin port)
 
-Upstream binds sidebars through Hyprland's GlobalShortcut, which cannot work on KWin.
-Instead two Plasma command shortcuts run the IPC calls:
-Meta+Shift+Space → `sidebarRight toggle`, Ctrl+Shift+Space → `sidebarLeft toggle`
-(`~/.local/share/applications/net.local.pillbar-sidebar-*.desktop`). Remove with
-`~/.local/share/Fancy-Floating-Bar/REVERT-hotkeys.sh`.
+`assets/icons` and `assets/images` are copied verbatim from upstream (the closure tool
+follows imports, so image folders were missed at first — the distro icon was blank).
+`assets/wallpapers` (42 MB) is deliberately not included.
+
+The right sidebar's avatar is read first from `~/.config/pillbar/avatar` (any image
+format — `avatar.png`, `avatar.jpg`; Qt probes the suffix), a bar-only path added in
+`modules/common/Directories.qml`. Upstream's fallbacks follow: the AccountsService icon,
+`~/.face`, `~/.face.icon` — those are the account picture Plasma and SDDM show, so they
+are left alone. Restart the bar after replacing the image.
