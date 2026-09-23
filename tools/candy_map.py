@@ -224,6 +224,34 @@ M = {
 }
 
 
+# The pill draws its own glyphs (modules/pill/GlyphIcon.qml), with its own names.
+# Keys get a "pill:" prefix in the JSON. Transport controls (play/pause/next/prev),
+# chevrons, close/check/return/undo/trash and the weather set stay drawn: candy has
+# no next/prev or action icons, and a half-candy transport row reads as broken.
+P = {
+    "agenda": ["@calendar"], "stopwatch": ["@timer"], "gamepad": ["@game-mode"],
+    "dnd": ["@do-not-disturb"],
+    "type": ["preferences-desktop-font"], "language": ["preferences-desktop-locale"],
+    "palette": ["preferences-desktop-color"], "scaling": ["preferences-desktop-display"],
+    "app-window": ["org.kde.plasma.kickerdash", "applications-all"],
+    "mouse": ["input-mouse"], "keyboard": ["input-keyboard"], "cursor": ["preferences-desktop-cursors"],
+    "download": ["folder-download"], "monitor": ["utilities-system-monitor"],
+    "battery": ["battery-full"], "bolt": ["battery-profile-performance"],
+    "awake": ["preferences-system-power"],
+    "speaker": ["audio-volume-high"], "speaker-off": ["audio-volume-muted"],
+    "mic": ["mic-on"], "mic-off": ["mic-off"],
+    "lock": ["keepassxc"], "lock-round": ["keepassxc"], "lock-outline": ["keepassxc"],
+    "logout": ["system-log-out"], "suspend": ["system-suspend"],
+    "reboot": ["system-reboot"], "shutdown": ["system-shutdown"],
+    "mixer": ["multimedia-volume-control"], "music": ["multimedia-audio-player"],
+    "video": ["multimedia-video-player"], "record": ["simplescreenrecorder"],
+    "wifi": ["network-wireless-signal-excellent"], "ethernet": ["network-wired"],
+    "bluetooth": ["network-bluetooth"], "hotspot": ["network-wireless-available"],
+    "inbox": ["notifications"], "clipboard": ["klipper"],
+    "cog": ["preferences-system"], "clock": ["clock"],
+}
+M.update({"pill:" + k: v for k, v in P.items()})
+
 def main():
     out_root = sys.argv[1] if len(sys.argv) > 1 else "."
     idx = {}

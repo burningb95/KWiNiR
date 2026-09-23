@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import Quickshell.Widgets
 import qs.modules.common
 
 /**
@@ -95,8 +96,29 @@ Item {
 
     readonly property var g: glyphs[name] !== undefined ? glyphs[name] : ({ d: "", fill: false })
 
+    // KWin port: a candy-icons replacement from CandyGlyphs ("pill:<name>" keys
+    // in material-map.json) draws instead of the baked path. Candy icons keep
+    // their own colors, so the glyph's tint is carried as opacity: its alpha,
+    // and a slight dim while it sits in the idle iconDim color (hover and
+    // accent states render at full strength).
+    readonly property string candySource: CandyGlyphs.sourceFor("pill:" + name)
+    readonly property bool useCandy: candySource.length > 0
+
+    IconImage {
+        anchors.centerIn: parent
+        visible: root.useCandy
+        implicitSize: Math.min(root.width, root.height)
+        source: root.candySource
+        opacity: root.color.a * (Qt.colorEqual(Qt.rgba(root.color.r, root.color.g, root.color.b, 1),
+            Qt.rgba(PillTheme.iconDim.r, PillTheme.iconDim.g, PillTheme.iconDim.b, 1)) ? 0.8 : 1)
+        Behavior on opacity {
+            NumberAnimation { duration: PillMotion.fast; easing.type: PillMotion.easeStandard }
+        }
+    }
+
     Shape {
         id: glyph
+        visible: !root.useCandy
 
         width: 24
         height: 24
