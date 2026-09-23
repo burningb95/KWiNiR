@@ -133,25 +133,37 @@ Item {
                     columnSpacing: 4
 
                     ActionTile {
-                        visible: CompositorService.isNiri
+                        // KWin port: Spectacle on Plasma (full screen -> clipboard).
+                        visible: CompositorService.isNiri || CompositorService.isKWin
                         tileIcon: "screenshot"
                         label: Translation.tr("Screenshot")
-                        onClicked: Quickshell.execDetached(["niri", "msg", "action", "screenshot"])
+                        onClicked: Quickshell.execDetached(CompositorService.isKWin
+                            ? ["/usr/bin/spectacle", "-f", "-b", "-c"]
+                            : ["niri", "msg", "action", "screenshot"])
                     }
                     ActionTile {
                         tileIcon: "screenshot_region"
                         label: Translation.tr("Region")
-                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "region", "screenshot"])
+                        // KWin port: scripts/inir isn't shipped; Spectacle region -> clipboard.
+                        onClicked: Quickshell.execDetached(CompositorService.isKWin
+                            ? ["/usr/bin/spectacle", "-r", "-b", "-c"]
+                            : [Quickshell.shellPath("scripts/inir"), "region", "screenshot"])
                     }
                     ActionTile {
                         tileIcon: "videocam"
                         label: Translation.tr("Record")
-                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "region", "record"])
+                        // KWin port: Spectacle's own region recorder.
+                        onClicked: Quickshell.execDetached(CompositorService.isKWin
+                            ? ["/usr/bin/spectacle", "-R", "region"]
+                            : [Quickshell.shellPath("scripts/inir"), "region", "record"])
                     }
                     ActionTile {
                         tileIcon: "text_fields"
                         label: Translation.tr("OCR")
-                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "region", "ocr"])
+                        // KWin port: Spectacle region capture -> tesseract -> clipboard.
+                        onClicked: Quickshell.execDetached(CompositorService.isKWin
+                            ? ["/usr/bin/bash", "-c", 'f=$(mktemp --suffix=.png) && /usr/bin/spectacle -r -b -n -o "$f" && [ -s "$f" ] && t=$(/usr/bin/tesseract "$f" - -l eng+jpn 2>/dev/null) && [ -n "$t" ] && printf "%s" "$t" | /usr/bin/wl-copy && /usr/bin/notify-send -a KWiNiR "Text copied" "$(printf "%s" "$t" | head -c 120)"; rm -f "$f"']
+                            : [Quickshell.shellPath("scripts/inir"), "region", "ocr"])
                     }
                     ActionTile {
                         visible: CompositorService.isNiri

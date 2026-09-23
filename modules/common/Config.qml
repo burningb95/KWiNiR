@@ -13,6 +13,27 @@ Singleton {
     property bool isSettingsProcess: (Quickshell.env("INIR_STANDALONE_WINDOW") ?? "") === "1"
     property int readWriteDelay: 50 // milliseconds
     property bool blockWrites: false
+
+    /**
+     * KWin port: broken-file guard. Upstream, a config.json that fails to parse
+     * loads as defaults and the next routine write serializes those defaults
+     * over it, so one typo in a hand edit wiped the whole file. Now a failed
+     * parse copies the file to config.json.broken-<time>, blocks every write,
+     * warns once and notifies; the shell runs on defaults until the file parses
+     * again (fixing it on disk clears this automatically).
+     */
+    property bool fileBroken: false
+    function _handleUnparsableFile(reason: string): void {
+        if (root.fileBroken) return;
+        root.fileBroken = true;
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const backup = `${root.filePath}.broken-${stamp}`;
+        console.warn(`[Config] ${root.filePath} could not be parsed (${reason}). Writes are blocked; copy kept at ${backup}`);
+        Quickshell.execDetached(["/usr/bin/cp", "-p", root.filePath, backup]);
+        Quickshell.execDetached(["/usr/bin/notify-send", "-a", "KWiNiR", "-u", "critical",
+            "Config file has an error",
+            `Running on defaults and not saving changes. Your file is untouched (copy: ${backup}). Fix the JSON and it reloads.`]);
+    }
     // Custom widget data stored outside JsonAdapter to avoid VME crash on property var
     property var customWidgetData: ({})
     property bool customWidgetDataSynced: false
@@ -174,6 +195,57 @@ Singleton {
         root._bumpRevision();
         root.configChanged();
     }
+
+    /**
+     * KWin port: reset every option under `prefix` ("" = everything, or e.g.
+     * "bar.pill", "sidebar.right") and apply it live through the normal write path.
+     *   source "baseline" (default): burningb95's own setup, snapshotted to
+     *     ~/.config/pillbar/baseline.json; keys it lacks come from factory.
+     *   source "factory": iNiR's shipped defaults (defaults/inir-factory-config.json,
+     *     regenerate with tools/dump-factory-config.sh).
+     * Returns how many values were written; -1 if the sources can't be read.
+     */
+    function resetPath(prefix: string, source: string): int {
+        const pre = String(prefix ?? "");
+        let factory = null, baseline = null;
+        try { factoryDefaultsFile.reload(); factory = JSON.parse(factoryDefaultsFile.text()); } catch (e) {}
+        if ((source ?? "baseline") !== "factory") {
+            try { baselineFile.reload(); baseline = JSON.parse(baselineFile.text()); } catch (e) {}
+        }
+        if (!factory && !baseline) {
+            console.warn("[Config] resetPath: no defaults source readable");
+            return -1;
+        }
+        const pick = (obj) => {
+            if (!obj) return undefined;
+            if (pre.length === 0) return obj;
+            let cur = obj;
+            for (const k of pre.split(".")) {
+                if (cur === null || typeof cur !== "object" || !(k in cur)) return undefined;
+                cur = cur[k];
+            }
+            return cur;
+        };
+        const flat = {};
+        const walk = (v, path) => {
+            if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+                for (const k of Object.keys(v)) walk(v[k], path.length ? path + "." + k : k);
+            } else if (path.length > 0) {
+                flat[path] = v;
+            }
+        };
+        walk(pick(factory), pre);
+        walk(pick(baseline), pre);   // baseline wins where it has the key
+        // The var-typed buckets live outside the adapter; never mass-reset them.
+        for (const k of Object.keys(flat))
+            if (k.startsWith("background.widgets.custom") || k.startsWith("background.widgets.mascotInstances"))
+                delete flat[k];
+        root.setNestedValues(flat);
+        console.info(`[Config] resetPath("${pre}", ${source ?? "baseline"}): ${Object.keys(flat).length} values`);
+        return Object.keys(flat).length;
+    }
+    FileView { id: baselineFile; path: `${Directories.shellConfig}/baseline.json`; blockLoading: true }
+    FileView { id: factoryDefaultsFile; path: Quickshell.shellPath("defaults/inir-factory-config.json"); blockLoading: true }
 
     // Batch multiple key-value pairs, emitting configChanged only once.
     // Usage: Config.setNestedValues({ "a.b.c": 1, "x.y": "hello" })
@@ -477,6 +549,7 @@ Singleton {
                 if (!obj.background.widgets) obj.background.widgets = {};
                 obj.background.widgets.mascotInstances = root.mascotInstances;
             }
+            if (root.fileBroken) return;
             configFileView.setText(JSON.stringify(obj, null, 4));
         } catch (e) {
             console.warn("[Config] mirror write failed:", e.message);
@@ -504,6 +577,7 @@ Singleton {
                 root.mascotInstances = root._cloneObject(mascotData);
                 root._mascotSnapshotForInject = ({});
             }
+            if (root.fileBroken) return;
             root._writeInFlight = true;
             configFileView.setText(JSON.stringify(root._jsonMirror, null, 4));
         } catch (e) { root._writeInFlight = false; }
@@ -535,6 +609,10 @@ Singleton {
             }
             if (root._writeInFlight) {
                 root._pendingWrite = true;
+                return;
+            }
+            if (root.fileBroken) {
+                root._pendingWrite = false;
                 return;
             }
             root._prepareCustomInject();
@@ -586,7 +664,7 @@ Singleton {
         id: configFileView
         path: root.filePath
         watchChanges: true
-        blockWrites: root.blockWrites
+        blockWrites: root.blockWrites || root.fileBroken
         onFileChanged: {
             if (root._writeInFlight) {
                 root._pendingReload = true;
@@ -606,8 +684,10 @@ Singleton {
             // Initialize the in-memory JSON mirror from disk
             try {
                 root._jsonMirror = JSON.parse(configFileView.text());
+                root.fileBroken = false;
             } catch (e) {
                 root._jsonMirror = {};
+                root._handleUnparsableFile(e.message);
             }
             // Workaround: JsonAdapter doesn't populate property var inside nested JsonObjects.
             // Manually sync custom widget data from the raw JSON.
@@ -777,6 +857,18 @@ Singleton {
             }
 
             property JsonObject appearance: JsonObject {
+                // KWin port: burningb95's palettes as presets ("plum", "candy", "neon",
+                // "zenburn" -> extras/theme/colors.<name>.json). Informational: which one
+                // colors.json was last set from.
+                property string userPalette: "plum"
+                // KWin port: candy-icons layer. enable=false gives every glyph back to
+                // Material Symbols / the pill's drawn glyphs, live. The icon theme name
+                // itself is the IconTheme pragma in shell.qml (read at startup only).
+                property JsonObject candy: JsonObject {
+                    property bool enable: true
+                    property real idleOpacity: 0.8         // pill GlyphIcon replacements at rest
+                    property real statusIdleOpacity: 0.82  // pill status icons (wifi, bell...) at rest
+                }
                 property string theme: "auto" // Theme preset ID: "auto" for wallpaper-based, or preset name like "gruvbox-dark", "catppuccin-mocha", "custom", etc.
                 property string globalStyle: "material" // "material" | "cards" | "aurora" | "inir" | "angel" | "regalia" | "zzz" | "cookie" | "editorial"
                 // Shared skin for every island surface (islands bar, island dock,
@@ -1202,6 +1294,12 @@ Singleton {
             }
 
             property JsonObject gameMode: JsonObject {
+                // KWin port: with disableEffects on, these KWin effects are unloaded
+                // for the session while game mode is active and reloaded after
+                // (never written to kwinrc). Only ones loaded at the time are touched.
+                property list<string> kwinEffects: ["fade", "fadingpopups", "slide", "slidingpopups",
+                    "slidingnotifications", "magiclamp", "maximize", "wobblywindows", "windowaperture",
+                    "blendchanges", "fullscreen", "screentransform"]
                 property bool autoDetect: true
                 property bool disableAnimations: true
                 property bool disableEffects: true
@@ -2340,6 +2438,12 @@ Singleton {
                 // Options for bar.appearanceStyle === "pill": the morphing centre
                 // island that replaces the bar and grows on hover.
                 property JsonObject pill: JsonObject {
+                    // KWin port: hover-row order. Item ids, "|" = hairline divider.
+                    // Unknown ids are ignored (with a warning); ids missing here are
+                    // appended at the end so nothing disappears.
+                    property list<string> rowOrder: ["weather", "tray", "wifi", "battery", "inbox", "|",
+                        "media", "launcher", "glance", "mixer", "clipboard", "recorder", "sysmon", "|",
+                        "settings", "sidebarLeft", "sidebarRight", "power"]
                     property bool barMode: false // Rest expanded: the hover row stays out as a persistent bar
                     property bool floatOverWindows: false // Keep the visible Pill over normal windows instead of reserving the top edge
                     property real scale: 1 // UI scale multiplier on top of the screen-height ratio
@@ -2539,6 +2643,12 @@ Singleton {
                     property JsonObject showWhenPressingSuper: JsonObject {
                         property bool enable: true
                         property int delay: 140
+                    }
+                    // KWin port: showWhenPressingSuper needs Hyprland. Instead,
+                    // `qs -c pillbar ipc call pill peek` reveals the pill for durationMs.
+                    property JsonObject peek: JsonObject {
+                        property bool enable: true
+                        property int durationMs: 2000
                     }
                 }
                 property bool bottom: false // Instead of top
@@ -3284,6 +3394,10 @@ Singleton {
             }
 
             property JsonObject clipboard: JsonObject {
+                // KWin port: nothing feeds cliphist on Plasma, so the bar runs
+                // `wl-paste --watch cliphist store` itself (sensitive copies from
+                // password managers are skipped by cliphist).
+                property bool historyWatcher: true
                 // Decoded text of pinned entries, newest first. Stored decoded so a
                 // pin survives cliphist rotating its store past the original id.
                 property list<string> pinned: []
@@ -3570,6 +3684,9 @@ Singleton {
                 }
 
                 property JsonObject quickToggles: JsonObject {
+                    // KWin port: toggle types hidden from the panel and its picker
+                    // (dependency missing on this system).
+                    property list<string> hiddenTypes: ["cloudflareWarp"]
                     property string style: "android" // Options: classic, android
                     property JsonObject android: JsonObject {
                         property int columns: 4
@@ -3609,6 +3726,9 @@ Singleton {
 
                 // Right sidebar widget toggles
                 property JsonObject right: JsonObject {
+                    // KWin port: sidebar avatar image; "" = ~/.config/pillbar/avatar
+                    // (then the account picture Plasma/SDDM use).
+                    property string avatarPath: ""
                     property list<string> enabledWidgets: ["calendar", "events", "todo", "calculator", "sysmon", "weather"]
                     // Controls section order for compact layout (drag to reorder)
                     property list<string> controlsSectionOrder: ["sliders", "toggles", "devices", "media", "quickActions"]

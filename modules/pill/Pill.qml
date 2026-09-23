@@ -954,6 +954,68 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Math.round(Math.max(12, Config.options?.bar?.pill?.iconSpacing ?? 14) * pill.s)
 
+                /**
+                 * KWin port: bar.pill.rowOrder. Row lays its children out in child
+                 * order, so the existing items are re-parented in the configured
+                 * sequence — they keep their bindings, ids, soul targets and motion.
+                 * "|" places the next hairline divider. A divider shows when
+                 * anything before it is visible and its following group has a
+                 * visible item (upstream's rule, generalised to any grouping).
+                 */
+                readonly property var rowItems: ({
+                    weather: weatherGlance, tray: trayRowItem, wifi: wifiIcon, battery: batteryIcon,
+                    inbox: inboxIcon, media: mediaShortcut, launcher: launcherIcon, glance: glanceIcon,
+                    mixer: mixerIcon, clipboard: clipboardIcon, recorder: recorderIcon, sysmon: sysmonIcon,
+                    settings: settingsIcon, sidebarLeft: sidebarLeftIcon, sidebarRight: sidebarRightIcon,
+                    power: powerIcon
+                })
+                readonly property var defaultRowOrder: ["weather", "tray", "wifi", "battery", "inbox", "|",
+                    "media", "launcher", "glance", "mixer", "clipboard", "recorder", "sysmon", "|",
+                    "settings", "sidebarLeft", "sidebarRight", "power"]
+                property var rowGroups: []   // arrays of items between dividers
+                readonly property var rowOrderSource: Config.options?.bar?.pill?.rowOrder
+                onRowOrderSourceChanged: Qt.callLater(statusRow._applyRowOrder)
+                Component.onCompleted: _applyRowOrder()
+
+                function dividerVisible(i: int): bool {
+                    const g = statusRow.rowGroups
+                    if (i < 0 || i + 1 >= g.length) return false
+                    let before = false
+                    for (let k = 0; k <= i && !before; k++)
+                        before = g[k].some(it => it.visible)
+                    return before && g[i + 1].some(it => it.visible)
+                }
+
+                function _applyRowOrder(): void {
+                    let order = []
+                    try { order = Array.from(statusRow.rowOrderSource ?? []).map(x => String(x)) } catch (e) { order = [] }
+                    if (order.length === 0) order = statusRow.defaultRowOrder.slice()
+                    const dividers = [rowDivider0, rowDivider1, rowDivider2, rowDivider3]
+                    const seen = new Set()
+                    const seq = []
+                    const groups = [[]]
+                    let d = 0
+                    for (const id of order) {
+                        if (id === "|") {
+                            if (d >= dividers.length) { console.warn("[Pill] rowOrder: more than", dividers.length, "dividers; extra ignored"); continue }
+                            seq.push(dividers[d++]); groups.push([])
+                            continue
+                        }
+                        const it = statusRow.rowItems[id]
+                        if (!it) { console.warn("[Pill] rowOrder: unknown item", id, "- ignored"); continue }
+                        if (seen.has(id)) continue
+                        seen.add(id); seq.push(it); groups[groups.length - 1].push(it)
+                    }
+                    // Anything the list leaves out is appended, so an item never vanishes.
+                    for (const id of Object.keys(statusRow.rowItems))
+                        if (!seen.has(id)) { seq.push(statusRow.rowItems[id]); groups[groups.length - 1].push(statusRow.rowItems[id]) }
+                    // Unused dividers park at the end; dividerVisible() keeps them hidden.
+                    for (; d < dividers.length; d++) seq.push(dividers[d])
+                    for (const it of seq) it.parent = statusRow.parent   // bounce: same-parent assignment would not reorder
+                    for (const it of seq) it.parent = statusRow
+                    statusRow.rowGroups = groups
+                }
+
                 Row {
                     id: weatherGlance
                     anchors.verticalCenter: parent.verticalCenter
@@ -1010,9 +1072,18 @@ Item {
                     width: pill.iconPx
                     height: pill.iconPx
 
+                    // Upstream glyph; shown when the candy layer is off.
+                    WifiGlyph {
+                        anchors.centerIn: parent
+                        visible: !CandyGlyphs.enabled
+                        s: pill.s
+                        level: Network.networkStrength / 100
+                        on: Network.wifiEnabled
+                    }
                     // KWin port: candy-icons signal-strength icon instead of WifiGlyph.
                     CandyStatusIcon {
                         id: wifiCandy
+                        visible: CandyGlyphs.enabled
                         anchors.fill: parent
                         readonly property real level: Network.networkStrength / 100
                         name: !Network.wifiEnabled ? "network-wireless-off"
@@ -1055,9 +1126,18 @@ Item {
                         anchors.centerIn: parent
                         spacing: 5 * pill.s
 
+                        GlyphIcon {
+                            visible: batteryIcon.showIcon && !CandyGlyphs.enabled
+                            width: pill.iconPx
+                            height: pill.iconPx
+                            name: "battery"
+                            color: Battery.isLow ? PillTheme.vermLit
+                                : (Battery.isCharging ? PillTheme.flameGlow : PillTheme.iconDim)
+                            stroke: 1.7
+                        }
                         // KWin port: candy-icons battery level (10% steps).
                         CandyStatusIcon {
-                            visible: batteryIcon.showIcon
+                            visible: batteryIcon.showIcon && CandyGlyphs.enabled
                             width: pill.iconPx
                             height: pill.iconPx
                             readonly property string step: String(Math.round(Math.max(0, Math.min(1, Battery.percentage)) * 10) * 10).padStart(3, "0")
@@ -1098,9 +1178,18 @@ Item {
                     width: pill.iconPx
                     height: pill.iconPx
 
+                    GlyphIcon {
+                        anchors.fill: parent
+                        visible: !CandyGlyphs.enabled
+                        name: "inbox"
+                        color: inboxArea.containsMouse ? PillTheme.cream : PillTheme.iconDim
+                        stroke: 1.7
+                    }
                     // KWin port: candy-icons bell. The ringing bell already marks
-                    // unread notifications, so upstream's unread dot is dropped.
+                    // unread notifications, so upstream's unread dot is only shown
+                    // with the candy layer off.
                     CandyStatusIcon {
+                        visible: CandyGlyphs.enabled
                         anchors.fill: parent
                         name: Notifications.silent ? "notifications-disabled"
                             : Notifications.unread > 0 ? "notification-active" : "notification-inactive"
@@ -1108,7 +1197,7 @@ Item {
                     }
 
                     Rectangle {
-                        visible: false
+                        visible: !CandyGlyphs.enabled && Notifications.unread > 0
                         anchors.top: parent.top
                         anchors.right: parent.right
                         width: Math.max(5, 5 * pill.s)
@@ -1133,12 +1222,14 @@ Item {
                 // inbox) and the tool surfaces — the row reads as sections, not
                 // one long run of icons.
                 Rectangle {
+                    id: rowDivider0
+                    property int dividerIndex: 0
                     anchors.verticalCenter: parent.verticalCenter
                     width: 1
                     height: 18 * pill.s
                     color: PillTheme.hair
-                    visible: (weatherGlance.visible || trayRowItem.visible || wifiIcon.visible || batteryIcon.visible || inboxIcon.visible)
-                        && (mediaShortcut.visible || launcherIcon.visible || glanceIcon.visible || mixerIcon.visible || clipboardIcon.visible || recorderIcon.visible || sysmonIcon.visible)
+                    // KWin port: groups come from bar.pill.rowOrder (see _applyRowOrder)
+                    visible: statusRow.dividerVisible(dividerIndex)
                 }
 
                 Rectangle {
@@ -1160,8 +1251,20 @@ Item {
                         anchors.centerIn: parent
                         spacing: 8 * pill.s
 
+                        GlyphIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !CandyGlyphs.enabled
+                            width: 20 * pill.s
+                            height: 20 * pill.s
+                            name: pill.mediaVolumeFeedback >= 0
+                                ? (pill.mediaVolumeFeedback <= 0 ? "speaker-off" : "speaker")
+                                : (MprisController.activePlayer?.isPlaying ? "pause-s" : "music")
+                            color: mediaShortcutArea.containsMouse ? PillTheme.cream : PillTheme.vermLit
+                            stroke: 1.7
+                        }
                         // KWin port: candy-icons volume / playback state.
                         CandyStatusIcon {
+                            visible: CandyGlyphs.enabled
                             anchors.verticalCenter: parent.verticalCenter
                             width: 20 * pill.s
                             height: 20 * pill.s
@@ -1378,13 +1481,32 @@ Item {
                  */
                 // Hairline before the shell shortcuts (sidebars + power).
                 Rectangle {
+                    id: rowDivider1
+                    property int dividerIndex: 1
                     anchors.verticalCenter: parent.verticalCenter
                     width: 1
                     height: 18 * pill.s
                     color: PillTheme.hair
-                    visible: (launcherIcon.visible || glanceIcon.visible || mixerIcon.visible || clipboardIcon.visible || recorderIcon.visible || sysmonIcon.visible
-                        || weatherGlance.visible || trayRowItem.visible || wifiIcon.visible || batteryIcon.visible || inboxIcon.visible)
-                        && (settingsIcon.visible || sidebarLeftIcon.visible || sidebarRightIcon.visible || powerIcon.visible)
+                    visible: statusRow.dividerVisible(dividerIndex)
+                }
+                // KWin port: spare dividers for rowOrder layouts with more groups.
+                Rectangle {
+                    id: rowDivider2
+                    property int dividerIndex: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 1
+                    height: 18 * pill.s
+                    color: PillTheme.hair
+                    visible: statusRow.dividerVisible(dividerIndex)
+                }
+                Rectangle {
+                    id: rowDivider3
+                    property int dividerIndex: 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 1
+                    height: 18 * pill.s
+                    color: PillTheme.hair
+                    visible: statusRow.dividerVisible(dividerIndex)
                 }
 
                 Item {

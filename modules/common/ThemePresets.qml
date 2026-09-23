@@ -3900,6 +3900,8 @@ Singleton {
         // Build a single bash script that writes all files atomically.
         // JSON uses double quotes only, so single-quoting is safe.
         let script = `set -e; mkdir -p '${genDir}'\n`;
+        // KWin port: keep the palette a preset is about to replace (last 5).
+        script += `f='${Directories.generatedMaterialThemePath}'; [ -s "$f" ] && cp -p "$f" "$f.bak-$(date +%s)"; ls -t "$f".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f\n`;
         script += `printf '%s' '${colorsJson}' > '${Directories.generatedMaterialThemePath}'\n`;
         script += `printf '%s' '${paletteJson}' > '${Directories.generatedPalettePath}'\n`;
         script += `printf '%s' '${appPaletteJson}' > '${Directories.generatedAppPalettePath}'\n`;

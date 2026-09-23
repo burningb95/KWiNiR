@@ -29,9 +29,13 @@ AbstractQuickPanel {
     readonly property real baseCellHeight: 56
 
     // Toggles
+    // KWin port: sidebar.quickToggles.hiddenTypes removes types from the panel and its picker.
+    readonly property list<string> hiddenToggleTypes: Config.options?.sidebar?.quickToggles?.hiddenTypes ?? []
     readonly property list<string> availableToggleTypes: ["network", "hotspot", "bluetooth", "idleInhibitor", "easyEffects", "nightLight", "darkMode", "cloudflareWarp", "gameMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "notifications", "powerProfile", "musicRecognition", "voiceSearch", "antiFlashbang"]
+        .filter(t => !hiddenToggleTypes.includes(t))
     readonly property int columns: Config.options?.sidebar?.quickToggles?.android?.columns ?? 4
-    readonly property list<var> toggles: Config.ready ? (Config.options?.sidebar?.quickToggles?.android?.toggles ?? []) : []
+    readonly property list<var> toggles: Config.ready ? Array.from(Config.options?.sidebar?.quickToggles?.android?.toggles ?? [])
+        .filter(t => !hiddenToggleTypes.includes(t?.type ?? "")) : []
     readonly property list<var> toggleRows: toggleRowsForList(toggles)
     readonly property list<var> unusedToggles: {
         const types = availableToggleTypes.filter(type => !toggles.some(toggle => (toggle && toggle.type === type)))

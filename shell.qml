@@ -134,6 +134,36 @@ ShellRoot {
     }
 
     /**
+     * KWin port: clipboard history. The pill's clipboard surface reads cliphist,
+     * but on Plasma nothing stores into it (Klipper keeps its own history), so
+     * the bar runs the watcher itself while clipboard.historyWatcher is on.
+     * It is a child of this process: it stops with the bar. cliphist skips
+     * entries marked sensitive (x-kde-passwordManagerHint), so password-manager
+     * copies are not recorded.
+     */
+    Process {
+        id: cliphistWatcher
+        running: CompositorService.isKWin && Config.ready
+            && (Config.options?.clipboard?.historyWatcher ?? true)
+        command: ["/usr/bin/wl-paste", "--watch", "/usr/bin/cliphist", "store"]
+        onExited: (code, status) => {
+            if (CompositorService.isKWin && (Config.options?.clipboard?.historyWatcher ?? true)) {
+                console.warn("[Clipboard] cliphist watcher exited (" + code + "), restarting in 5s")
+                cliphistRestart.restart()
+            }
+        }
+    }
+    Timer {
+        id: cliphistRestart
+        interval: 5000
+        onTriggered: {
+            cliphistWatcher.running = false
+            cliphistWatcher.running = Qt.binding(() => CompositorService.isKWin && Config.ready
+                && (Config.options?.clipboard?.historyWatcher ?? true))
+        }
+    }
+
+    /**
      * Click-outside dismissal, verbatim from ShellIiPanelsImpl.qml (only
      * `panelsRoot` renamed to `shellRoot`). SidebarHost closes itself on focus
      * loss only through CompositorFocusGrab, which is Hyprland-only; on every
@@ -203,6 +233,14 @@ ShellRoot {
         function on(): void { Idle.toggleInhibit(true) }
         function off(): void { Idle.toggleInhibit(false) }
         function state(): string { return Idle.inhibit ? "inhibited" : "normal" }
+    }
+
+    /** KWin port: burningb95's palettes (extras/theme). `palette apply plum` */
+    IpcHandler {
+        target: "palette"
+        function apply(name: string): string { return UserPalettes.apply(name) ? "applied " + name : "unknown palette" }
+        function list(): string { return UserPalettes.names.join(" ") }
+        function current(): string { return UserPalettes.current }
     }
 
     IpcHandler {

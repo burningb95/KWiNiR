@@ -23,6 +23,11 @@ Singleton {
     id: root
 
     readonly property string dir: Quickshell.shellPath("assets/candy")
+    // appearance.candy.enable: false gives every glyph back to Material Symbols
+    // and the pill's own drawings, live.
+    readonly property bool enabled: Config.options?.appearance?.candy?.enable ?? true
+    readonly property real idleOpacity: Math.max(0.1, Math.min(1, Config.options?.appearance?.candy?.idleOpacity ?? 0.8))
+    readonly property real statusIdleOpacity: Math.max(0.1, Math.min(1, Config.options?.appearance?.candy?.statusIdleOpacity ?? 0.82))
 
     readonly property var files: ({
         "clear-notifications": "clear-notifications.svg",
@@ -57,6 +62,7 @@ Singleton {
     }
 
     function sourceFor(name: string): string {
+        if (!root.enabled) return ""
         const n = String(name ?? "")
         const target = n.startsWith("candy:") ? "@" + n.slice(6) : (root.materialMap[n] ?? "")
         if (target.startsWith("@")) {

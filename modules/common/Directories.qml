@@ -55,7 +55,11 @@ Singleton {
      * for this sidebar would change the login screen too. No suffix: Qt's
      * image loader probes known extensions, so avatar.png / avatar.jpg both work.
      */
-    property string userAvatarPathPillbar: `${Directories.shellConfig}/avatar`
+    // sidebar.right.avatarPath overrides it ("" = this default; "~/" is expanded).
+    readonly property string _avatarPathSetting: String(Config.options?.sidebar?.right?.avatarPath ?? "").trim()
+    property string userAvatarPathPillbar: _avatarPathSetting.length > 0
+        ? FileUtils.trimFileProtocol(_avatarPathSetting.startsWith("~/") ? `${Directories.homePath}/${_avatarPathSetting.slice(2)}` : _avatarPathSetting)
+        : `${Directories.shellConfig}/avatar`
     property int userAvatarRevision: 0
     readonly property var userAvatarPaths: [
         userAvatarPathPillbar,

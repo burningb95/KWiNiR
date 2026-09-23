@@ -121,6 +121,22 @@ Scope {
                 root.openSurfaceByName(surface);
         }
         function state(): string { return root.openSurface.length > 0 ? root.openSurface : "closed" }
+        // KWin port: stands in for showWhenPressingSuper (Hyprland-only). Expands
+        // the pill, revealing it if auto-hidden, for bar.autoHide.peek.durationMs.
+        function peek(): void { root.peek() }
+    }
+
+    property bool peekActive: false
+    function peek(): void {
+        if (!(Config.options?.bar?.autoHide?.peek?.enable ?? true))
+            return
+        root.peekActive = true
+        peekTimer.restart()
+    }
+    Timer {
+        id: peekTimer
+        interval: Math.max(300, Config.options?.bar?.autoHide?.peek?.durationMs ?? 2000)
+        onTriggered: root.peekActive = false
     }
 
     readonly property real uiScale: Config.options?.bar?.pill?.scale ?? 1
@@ -527,6 +543,7 @@ Scope {
                 Pill {
                     id: pill
                     s: overlay.s
+                    forcePinned: root.peekActive  // KWin port: `pill peek`
                     screenName: overlay.modelData ? overlay.modelData.name : ""
                     barWindow: overlay
                     surface: overlay.surface

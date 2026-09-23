@@ -22,7 +22,9 @@ AndroidQuickToggleButton {
         interval: 300
         repeat: false
         onTriggered: {
-            Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "region", "screenshot"])
+            // KWin port: scripts/inir isn't shipped; Spectacle does region capture on
+            // Plasma (-r region, -b no editor window, -c copy the capture to the clipboard).
+            Quickshell.execDetached(["/usr/bin/spectacle", "-r", "-b", "-c"])
         }
     }
 

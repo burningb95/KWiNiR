@@ -75,6 +75,77 @@ Singleton {
     }
 
     // External process control (optional)
+    /**
+     * KWin port: gameMode.disableEffects on KWin. While game mode is active,
+     * unload the KWin effects in gameMode.kwinEffects that are loaded right
+     * now, and load exactly those again when it ends. Runtime only (D-Bus
+     * loadEffect/unloadEffect) — kwinrc is never written. The unloaded set is
+     * kept in a state file, so a bar that dies mid-game restores them on its
+     * next start.
+     */
+    readonly property bool _kwinEffectsWanted: CompositorService.isKWin && active && disableEffects
+    property var _kwinUnloaded: []
+    readonly property string _kwinStateFile: Quickshell.env("HOME") + "/.local/state/quickshell/user/gamemode_kwin_unloaded"
+    on_KwinEffectsWantedChanged: Qt.callLater(root._kwinSyncEffects)
+    function _kwinSyncEffects(): void {
+        if (!CompositorService.isKWin) return
+        if (root._kwinEffectsWanted && root._kwinUnloaded.length === 0) {
+            const list = Array.from(Config.options?.gameMode?.kwinEffects ?? []).map(String)
+            kwinUnloadProc.names = []
+            kwinUnloadProc.command = ["/usr/bin/bash", "-c", `
+loaded=$(gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.freedesktop.DBus.Properties.Get org.kde.kwin.Effects loadedEffects)
+: > "$1"; shift
+for e in "$@"; do case "$loaded" in *"'$e'"*)
+  gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.kde.kwin.Effects.unloadEffect "$e" >/dev/null && echo "$e";;
+esac; done`, "bash", root._kwinStateFile, ...list]
+            kwinUnloadProc.running = true
+        } else if (!root._kwinEffectsWanted && root._kwinUnloaded.length > 0) {
+            root._kwinLoad(root._kwinUnloaded)
+            root._kwinUnloaded = []
+        }
+    }
+    function _kwinLoad(names): void {
+        Quickshell.execDetached(["/usr/bin/bash", "-c",
+            'f="$1"; shift; for e in "$@"; do gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.kde.kwin.Effects.loadEffect "$e" >/dev/null; done; rm -f "$f"',
+            "bash", root._kwinStateFile, ...names])
+        root._log("[GameMode] KWin effects restored:", names.join(" "))
+    }
+    Process {
+        id: kwinUnloadProc
+        property var names: []
+        stdout: SplitParser { onRead: line => { if (line.trim().length) kwinUnloadProc.names.push(line.trim()) } }
+        onExited: {
+            root._kwinUnloaded = kwinUnloadProc.names.slice()
+            kwinStateWriter.setText(root._kwinUnloaded.join("\n"))
+            root._log("[GameMode] KWin effects unloaded:", root._kwinUnloaded.join(" "))
+            // Game mode ended while we were unloading: put them straight back.
+            if (!root._kwinEffectsWanted) Qt.callLater(root._kwinSyncEffects)
+        }
+    }
+    FileView { id: kwinStateWriter; path: root._kwinStateFile; printErrors: false }
+    // Crash recovery: effects left unloaded by a previous run come back at start.
+    FileView {
+        path: root._kwinStateFile
+        blockLoading: true
+        printErrors: false  // absent is the normal case
+        onLoaded: {
+            root._kwinLeftover = text().split("\n").map(x => x.trim()).filter(x => x.length)
+            root._kwinRecover()
+        }
+    }
+    property var _kwinLeftover: []
+    // Compositor detection can land after the state file loads; retry then.
+    function _kwinRecover(): void {
+        if (root._kwinLeftover.length && CompositorService.isKWin && !root._kwinEffectsWanted) {
+            root._kwinLoad(root._kwinLeftover)
+            root._kwinLeftover = []
+        }
+    }
+    Connections {
+        target: CompositorService
+        function onIsKWinChanged(): void { root._kwinRecover() }
+    }
+
     readonly property bool disableDiscoverOverlay: Config.options?.gameMode?.disableDiscoverOverlay ?? true
     readonly property bool suppressNotifications: Config.options?.gameMode?.suppressNotifications ?? true
     readonly property string _discoverOverlayServiceName: "discover-overlay.service"

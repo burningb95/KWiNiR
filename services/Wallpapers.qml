@@ -716,6 +716,18 @@ Singleton {
         const normalizedPath = FileUtils.trimFileProtocol(String(path ?? ""))
         if (!normalizedPath || normalizedPath.length === 0) return
 
+        // KWin port: Plasma draws the wallpaper here, not iNiR (switchwall.sh
+        // isn't shipped). Set the image inside each screen's *current* wallpaper
+        // plugin, so e.g. a2n.blur keeps blurring; the path is still recorded in
+        // Config for the sidebar's banner/previews.
+        if (CompositorService.isKWin) {
+            root._kwinApplyPlasmaWallpaper(normalizedPath, monitorName)
+            Config.setNestedValue("background.wallpaperPath", normalizedPath)
+            Config.setNestedValue("background.thumbnailPath", "")
+            root.changed()
+            return
+        }
+
         const adoptedPreview = root._adoptVisiblePreview(normalizedPath, monitorName)
         if (!adoptedPreview)
             root.requestWallpaperBlurTransition(monitorName)
@@ -751,6 +763,31 @@ Singleton {
             root._clearInternalPreview()
         root._queueWallpaperScript(normalizedPath, darkMode, false)
         root.changed()
+    }
+
+    /**
+     * KWin port: Plasma wallpaper via org.kde.PlasmaShell.evaluateScript.
+     * The first time this runs it saves every screen's current plugin and image
+     * to ~/.local/state/quickshell/user/plasma-wallpaper-original.json;
+     * tools/restore-plasma-wallpaper.sh puts them back. monitorName picks the
+     * Plasma desktop whose screen geometry matches that output; "" = all screens.
+     */
+    function _kwinApplyPlasmaWallpaper(path: string, monitorName: string): void {
+        const scr = monitorName.length > 0 ? Quickshell.screens.find(s => s?.name === monitorName) : null
+        const target = scr ? { x: scr.x, y: scr.y } : null
+        const script = `var u = ${JSON.stringify("file://" + path)}; var t = ${JSON.stringify(target)};
+desktops().forEach(function (d) {
+    if (t) { var g = screenGeometry(d.screen); if (g.x !== t.x || g.y !== t.y) return; }
+    d.currentConfigGroup = ["Wallpaper", d.wallpaperPlugin, "General"];
+    d.writeConfig("Image", u);
+    d.reloadConfig();
+});`
+        const save = `print(JSON.stringify(desktops().map(function (d) { d.currentConfigGroup = ["Wallpaper", d.wallpaperPlugin, "General"]; return { screen: d.screen, plugin: d.wallpaperPlugin, image: d.readConfig("Image") }; })))`
+        Quickshell.execDetached(["/usr/bin/bash", "-c", `
+state="$HOME/.local/state/quickshell/user/plasma-wallpaper-original.json"
+call() { gdbus call --session --dest org.kde.plasmashell --object-path /PlasmaShell --method org.kde.PlasmaShell.evaluateScript "$1"; }
+if [ ! -s "$state" ]; then mkdir -p "$(dirname "$state")"; call "$2" | sed -E "s/^\\('(.*)',\\)$/\\1/" > "$state"; fi
+call "$1" >/dev/null`, "bash", script, save])
     }
 
     // Apply only the color scheme from an image without changing the active wallpaper

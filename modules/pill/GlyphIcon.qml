@@ -110,7 +110,7 @@ Item {
         implicitSize: Math.min(root.width, root.height)
         source: root.candySource
         opacity: root.color.a * (Qt.colorEqual(Qt.rgba(root.color.r, root.color.g, root.color.b, 1),
-            Qt.rgba(PillTheme.iconDim.r, PillTheme.iconDim.g, PillTheme.iconDim.b, 1)) ? 0.8 : 1)
+            Qt.rgba(PillTheme.iconDim.r, PillTheme.iconDim.g, PillTheme.iconDim.b, 1)) ? CandyGlyphs.idleOpacity : 1)
         Behavior on opacity {
             NumberAnimation { duration: PillMotion.fast; easing.type: PillMotion.easeStandard }
         }

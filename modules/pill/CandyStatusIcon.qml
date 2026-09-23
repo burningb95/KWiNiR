@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
+import qs.modules.common
 
 /**
  * KWin port addition: a status indicator drawn from the candy-icons theme
@@ -18,7 +19,7 @@ Item {
 
     property string name: ""
     property bool hovered: false
-    property real restOpacity: 0.82
+    property real restOpacity: CandyGlyphs.statusIdleOpacity
 
     implicitWidth: 18
     implicitHeight: 18
