@@ -44,3 +44,19 @@ singleton Wallpapers 1.0 Wallpapers.qml
 singleton Weather 1.0 Weather.qml
 singleton YtMusic 1.0 YtMusic.qml
 singleton KWinService 1.0 KWinService.qml
+singleton Autostart 1.0 Autostart.qml
+singleton CustomWidgets 1.0 CustomWidgets.qml
+singleton DesktopWidgetLayout 1.0 DesktopWidgetLayout.qml
+singleton IconThemeService 1.0 IconThemeService.qml
+singleton JapaneseDictionary 1.0 JapaneseDictionary.qml
+singleton MinimizedWindows 1.0 MinimizedWindows.qml
+singleton MascotChaos 1.0 MascotChaos.qml
+singleton PolkitService 1.0 PolkitService.qml
+PolkitServiceImpl 1.0 PolkitServiceImpl.qml
+singleton Privacy 1.0 Privacy.qml
+singleton ShellUpdates 1.0 ShellUpdates.qml
+singleton Updates 1.0 Updates.qml
+singleton WebWallpaper 1.0 WebWallpaper.qml
+singleton WidgetPowerManager 1.0 WidgetPowerManager.qml
+singleton WindowPreviewService 1.0 WindowPreviewService.qml
+singleton WorldClock 1.0 WorldClock.qml

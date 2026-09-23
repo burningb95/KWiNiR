@@ -1,0 +1,4 @@
+module qs.modules.iris.widgets
+IrisWidgetControls 1.0 IrisWidgetControls.qml
+FaceChoice 1.0 FaceChoice.qml
+IrisSizeGrip 1.0 IrisSizeGrip.qml

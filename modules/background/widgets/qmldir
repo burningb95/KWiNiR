@@ -1,0 +1,10 @@
+module qs.modules.background.widgets
+AbstractBackgroundWidget 1.0 AbstractBackgroundWidget.qml
+ManifestPopover 1.0 ManifestPopover.qml
+WidgetChoiceButton 1.0 WidgetChoiceButton.qml
+WidgetEditAction 1.0 WidgetEditAction.qml
+WidgetPlacementControls 1.0 WidgetPlacementControls.qml
+WidgetQuickControlsLayout 1.0 WidgetQuickControlsLayout.qml
+singleton DesktopWidgetShapes 1.0 DesktopWidgetShapes.qml
+WidgetShapePicker 1.0 WidgetShapePicker.qml
+

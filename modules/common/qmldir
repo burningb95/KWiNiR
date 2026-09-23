@@ -9,3 +9,4 @@ singleton MascotCatalog 1.0 MascotCatalog.qml
 singleton Persistent 1.0 Persistent.qml
 singleton SidebarGeometry 1.0 SidebarGeometry.qml
 singleton ThemePresets 1.0 ThemePresets.qml
+singleton StylePresets 1.0 StylePresets.qml

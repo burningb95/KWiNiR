@@ -1,0 +1,2 @@
+module qs.modules.workspaceStrip
+WorkspaceStripDragProxy 1.0 WorkspaceStripDragProxy.qml
