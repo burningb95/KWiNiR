@@ -102,24 +102,26 @@ GroupButton {
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
         : Appearance.inirEverywhere ? Appearance.inir.colLayer2Hover
         : root.colDarkSurfaceHover
+    // KWin port / burningb95: active fills use the deep-red primary container, not neon
+    // primary (too loud as a large fill). Mirrors upstream's own "inir" style.
     colBackgroundToggled: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlate
         : Appearance.zzzEverywhere ? "transparent"
         : Appearance.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colPrimary, 0.45)
         : Appearance.inirEverywhere
         ? Appearance.inir.colPrimaryContainer
-        : Appearance.colors.colPrimary
+        : Appearance.colors.colPrimaryContainer
     colBackgroundToggledHover: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateHover
         : Appearance.zzzEverywhere ? "transparent"
         : Appearance.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colPrimaryHover, 0.35)
         : Appearance.inirEverywhere
         ? Appearance.inir.colPrimaryContainerHover
-        : Appearance.colors.colPrimaryHover
+        : Appearance.colors.colPrimaryContainerHover
     colBackgroundToggledActive: Appearance.regaliaEverywhere ? Appearance.regalia.primaryPlateActive
         : Appearance.zzzEverywhere ? "transparent"
         : Appearance.angelEverywhere ? ColorUtils.transparentize(Appearance.angel.colPrimaryActive, 0.30)
         : Appearance.inirEverywhere
         ? Appearance.inir.colPrimaryContainerActive
-        : Appearance.colors.colPrimaryActive
+        : Appearance.colors.colPrimaryContainerActive
     buttonRadius: Appearance.regaliaEverywhere ? Appearance.regalia.controlRadius
         : Appearance.zzzEverywhere ? Appearance.zzz.controlRadius
         : Appearance.angelEverywhere ? Appearance.angel.roundingSmall
@@ -141,8 +143,8 @@ GroupButton {
         : Appearance.inirEverywhere
         ? (toggled ? Appearance.inir.colOnPrimaryContainer : Appearance.inir.colText)
         : Appearance.auroraEverywhere
-        ? (toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurface)
-        : toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+        ? (toggled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnSurface)
+        : toggled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer2
     property color colIcon: Appearance.regaliaEverywhere
         ? (toggled ? Appearance.regalia.primaryPlateInk : Appearance.regalia.onColor)
         : Appearance.zzzEverywhere
@@ -152,8 +154,8 @@ GroupButton {
         : Appearance.inirEverywhere
         ? (toggled ? Appearance.inir.colOnPrimaryContainer : Appearance.inir.colText)
         : Appearance.auroraEverywhere
-        ? (toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurface)
-        : toggled ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+        ? (toggled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnSurface)
+        : toggled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer2
 
     onClicked: {
         root.mainAction();

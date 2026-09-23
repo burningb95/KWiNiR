@@ -44,7 +44,7 @@ Slider {
         : Appearance.regaliaEverywhere ? Appearance.regalia.hardwarePrimary
         : Appearance.angelEverywhere ? Appearance.angel.colPrimary
         : Appearance.inirEverywhere ? Appearance.inir.colPrimary
-        : Appearance.zzzEverywhere ? Appearance.zzz.accentSoft : Appearance.colors.colPrimary
+        : Appearance.zzzEverywhere ? Appearance.zzz.accentSoft : Appearance.colors.colPrimaryContainer // deep red fill; handle stays neon
     property color trackColor: Appearance.editorialEverywhere ? Appearance.editorial.layer(3)
         : Appearance.regaliaEverywhere ? Appearance.regalia.controlPlate
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
@@ -66,7 +66,7 @@ Slider {
         : Appearance.regaliaEverywhere ? Appearance.regalia.hardwarePrimaryInk
         : Appearance.angelEverywhere ? Appearance.angel.colOnPrimary
         : Appearance.inirEverywhere ? Appearance.inir.colOnPrimary
-        : Appearance.zzzEverywhere ? Appearance.zzz.onColor : Appearance.colors.colOnPrimary
+        : Appearance.zzzEverywhere ? Appearance.zzz.onColor : Appearance.colors.colOnPrimaryContainer
     property real unsharpenRadius: Appearance.rounding.unsharpen
     property real trackWidth: Appearance.regaliaEverywhere ? Math.min(7, configuration) : configuration
     property real trackRadius: Appearance.editorialEverywhere ? 2
