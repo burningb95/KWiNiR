@@ -289,3 +289,11 @@ Pages that do nothing on KWin are hidden through upstream's own navigation confi
 (`settingsUi.categories` → `hidden`), editable in the window via *Edit navigation*.
 Buttons that call `scripts/` (wallpaper regeneration, screenshot tools, niri
 config) silently do nothing.
+
+## Icon theme (KWin port)
+
+The bar and the settings window draw app icons (tray, launcher, notifications, media
+players, mixer) in **candy-icons** via `//@ pragma IconTheme candy-icons` in `shell.qml`
+and `settings.qml`. The pragma sets Qt's icon theme for that process only; the desktop
+keeps BeautyLine. Missing icons fall back through candy's `Inherits=` (breeze-dark,
+Adwaita, hicolor). UI glyphs are the Material Symbols font and are unaffected.

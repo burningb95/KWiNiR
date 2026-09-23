@@ -1,4 +1,7 @@
 //@ pragma UseQApplication
+// KWin port: this shell's own icon theme (tray, launcher, notification, media and
+// mixer app icons). Process-local: the desktop's icon theme is not touched.
+//@ pragma IconTheme candy-icons
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 //@ pragma Env INIR_STANDALONE_WINDOW=1
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
