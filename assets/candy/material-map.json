@@ -207,7 +207,7 @@
  "photo_library": "apps/scalable/multimedia-photo-manager.svg",
  "picture_as_pdf": "apps/scalable/document-viewer.svg",
  "pill:agenda": "@calendar",
- "pill:app-window": "preferences/scalable/org.kde.plasma.kickerdash.svg",
+ "pill:app-window": "apps/scalable/edit-find.svg",
  "pill:awake": "apps/scalable/preferences-system-power.svg",
  "pill:battery": "status/scalable/battery-full.svg",
  "pill:bluetooth": "status/scalable/network-bluetooth.svg",

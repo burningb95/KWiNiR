@@ -233,7 +233,7 @@ P = {
     "dnd": ["@do-not-disturb"],
     "type": ["preferences-desktop-font"], "language": ["preferences-desktop-locale"],
     "palette": ["preferences-desktop-color"], "scaling": ["preferences-desktop-display"],
-    "app-window": ["org.kde.plasma.kickerdash", "applications-all"],
+    "app-window": ["edit-find"],  # app launcher / search apps (burningb95 pick)
     "mouse": ["input-mouse"], "keyboard": ["input-keyboard"], "cursor": ["preferences-desktop-cursors"],
     "download": ["folder-download"], "monitor": ["utilities-system-monitor"],
     "battery": ["battery-full"], "bolt": ["battery-profile-performance"],
