@@ -68,12 +68,12 @@ Rectangle {
     property var allTabs: [
         {"type": "calendar", "name": Translation.tr("Calendar"), "icon": "calendar_month", "widget": calendarWidget},
         {"type": "events", "name": Translation.tr("Events"), "icon": "event_upcoming", "widget": eventsWidgetComponent},
-        {"type": "todo", "name": Translation.tr("To Do"), "icon": "done_outline", "widget": todoWidget},
+        {"type": "todo", "name": Translation.tr("To Do"), "icon": "candy:todo", "widget": todoWidget},  // KWin port: CandyGlyphs
         {"type": "notepad", "name": Translation.tr("Notepad"), "icon": "edit_note", "widget": notepadWidget},
         {"type": "calculator", "name": Translation.tr("Calc"), "icon": "calculate", "widget": calculatorWidget},
         {"type": "sysmon", "name": Translation.tr("System"), "icon": "monitor_heart", "widget": sysMonWidget},
         {"type": "weather", "name": Translation.tr("Weather"), "icon": "light_mode", "widget": weatherWidget},
-        {"type": "timer", "name": Translation.tr("Timer"), "icon": "schedule", "widget": pomodoroWidget},
+        {"type": "timer", "name": Translation.tr("Timer"), "icon": "candy:timer", "widget": pomodoroWidget},  // KWin port: CandyGlyphs
         {"type": "screentime", "name": Translation.tr("Screen Time"), "icon": "av_timer", "widget": screenTimeWidget},
     ]
 

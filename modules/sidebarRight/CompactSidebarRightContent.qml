@@ -708,12 +708,12 @@ Item {
         const all = [
             {id: "calendar",   icon: "calendar_month", label: Translation.tr("Calendar"),   component: calendarComponent},
             {id: "events",     icon: "event_upcoming", label: Translation.tr("Events"),     component: eventsComponent},
-            {id: "todo",       icon: "done_outline",  label: Translation.tr("To Do"),      component: todoComponent},
+            {id: "todo",       icon: "candy:todo",    label: Translation.tr("To Do"),      component: todoComponent},  // KWin port: CandyGlyphs
             {id: "notepad",    icon: "edit_note",     label: Translation.tr("Notepad"),    component: notepadComponent},
             {id: "calculator", icon: "calculate",     label: Translation.tr("Calc"),       component: calculatorComponent},
             {id: "sysmon",     icon: "monitor_heart", label: Translation.tr("System"),     component: sysmonComponent},
             {id: "weather",    icon: "light_mode", label: Translation.tr("Weather"), component: weatherDetailComponent},
-            {id: "timer",      icon: "schedule",      label: Translation.tr("Timer"),      component: timerComponent},
+            {id: "timer",      icon: "candy:timer",   label: Translation.tr("Timer"),      component: timerComponent},  // KWin port: CandyGlyphs
             {id: "screentime", icon: "av_timer",      label: Translation.tr("Screen Time"), component: screenTimeComponent},
         ]
         return all.filter(w => {

@@ -1,5 +1,6 @@
 import qs.modules.common
 import QtQuick
+import Quickshell.Widgets
 
 Item {
     id: root
@@ -26,6 +27,13 @@ Item {
     // a Material Symbols name — lets registry icons be kanji/katakana.
     readonly property bool useJp: text.startsWith("jp:")
     readonly property string jpGlyph: useJp ? text.slice(3) : ""
+
+    // KWin port: burningb95's candy picks. A mapped Material name, or an explicit
+    // "candy:<id>", draws that SVG at iconSize instead of the font glyph
+    // (CandyGlyphs has the map). It keeps its own colors, so `color`/`fill`
+    // don't apply to it.
+    readonly property string candySource: (useJp || forceNerd) ? "" : CandyGlyphs.sourceFor(text)
+    readonly property bool useCandy: candySource.length > 0
     
     // Nerd fonts need slightly larger size to match Material Symbols visually
     readonly property real effectiveFontSize: (useNerd && hasNerdGlyph) ? iconSize * 1.1 : iconSize
@@ -42,8 +50,16 @@ Item {
     // Material Symbols variable font axis range is 20..48; keeping it in-range avoids distorted fill at small icon sizes.
     readonly property real effectiveOpsz: 24
     
+    IconImage {
+        anchors.centerIn: parent
+        visible: root.useCandy
+        implicitSize: root.effectiveSize
+        source: root.candySource
+    }
+
     Text {
         id: iconText
+        visible: !root.useCandy
         anchors.centerIn: parent
         width: root.effectiveSize
         height: root.effectiveSize

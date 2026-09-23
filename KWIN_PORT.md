@@ -310,3 +310,17 @@ elsewhere are unchanged: candy has no action icons, and those glyphs animate fil
 Palette: `extras/theme/colors.candy.json` is the neon palette with secondary nudged to
 candy magenta-violet (`#d63bff`) and tertiary to candy cyan-blue (`#1ec8ff`); primary
 stays neon red. `colors.neon.json` is the previous version.
+
+### Hand-picked glyphs (CandyGlyphs)
+
+`modules/common/CandyGlyphs.qml` maps specific Material Symbols to burningb95's chosen
+SVGs in `assets/candy/` (sources and licenses in its `CREDITS.md`); `MaterialSymbol.qml`
+draws the SVG instead of the font glyph when a name is mapped. Mapped everywhere:
+`delete_sweep` (clear), `do_not_disturb_on` / `notifications_paused` (DND), `gamepad` /
+`sports_esports` (game mode), `calendar_month`, `calculate`, `search`, `hourglass_empty`
+(timer), `checklist` (todo). Generic names get an explicit `"candy:<id>"` at the call
+site instead — the right sidebar's timer tab (`schedule`) and to-do tab (`done_outline`).
+Add a pick: drop the SVG in `assets/candy/`, add it to `files` and `materialMap`.
+
+Palette since 2026-09-23 (late): `extras/theme/colors.plum.json` — primary neon plum
+`#d4209e`, secondary deep red `#d0142f`, tertiary candy cyan-blue.
