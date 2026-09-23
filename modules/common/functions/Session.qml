@@ -79,6 +79,12 @@ Singleton {
     }
 
     function lock() {
+        // KWin port: upstream runs scripts/inir, absent here. Plasma's screen locker
+        // listens for logind's Lock signal.
+        if (CompositorService.isKWin) {
+            Quickshell.execDetached(["/usr/bin/loginctl", "lock-session"]);
+            return;
+        }
         Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "lock", "activate"]);
     }
 
@@ -92,6 +98,11 @@ Singleton {
     }
 
     function logout() {
+        // KWin port: Plasma's session manager — graceful (apps close, session saved).
+        if (CompositorService.isKWin) {
+            Quickshell.execDetached(["/usr/bin/gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logout"]);
+            return;
+        }
         if (CompositorService.isNiri) {
             NiriService.quit();
             return;
@@ -118,12 +129,22 @@ Singleton {
     }
 
     function poweroff() {
+        // KWin port: Plasma's session manager — graceful (apps close, session saved).
+        if (CompositorService.isKWin) {
+            Quickshell.execDetached(["/usr/bin/gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndShutdown"]);
+            return;
+        }
         closeAllWindows();
         Quickshell.execDetached(["/usr/bin/systemctl", "poweroff", "-i"])
         Quickshell.execDetached(["/usr/bin/loginctl", "poweroff"])
     }
 
     function reboot() {
+        // KWin port: Plasma's session manager — graceful (apps close, session saved).
+        if (CompositorService.isKWin) {
+            Quickshell.execDetached(["/usr/bin/gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndReboot"]);
+            return;
+        }
         closeAllWindows();
         Quickshell.execDetached(["/usr/bin/systemctl", "reboot", "-i"])
         Quickshell.execDetached(["/usr/bin/loginctl", "reboot"])

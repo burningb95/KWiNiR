@@ -64,6 +64,14 @@ Singleton {
 
     function _startSwayidle() {
         if (inhibit) return
+        /**
+         * KWin port: Plasma's PowerDevil already owns idle, lock, screen-off and
+         * suspend on this session. Running swayidle beside it would double-manage
+         * those, and KWin implements ext_idle_notifier_v1, so swayidle would
+         * genuinely fire — including `systemctl suspend` once suspendTimeout is
+         * non-zero. Never start it on KWin.
+         */
+        if (CompositorService.isKWin) return
 
         const cmd = ["/usr/bin/swayidle", "-w"]
         const lockBeforeSleep = Config.options?.idle?.lockBeforeSleep !== false
