@@ -1,0 +1,22 @@
+[Unit]
+Description=iNiR pill bar and sidebars (Quickshell) - owns notifications
+Documentation=https://github.com/burningb95/KWiNiR
+PartOf=graphical-session.target
+After=plasma-kwin_wayland.service
+# Claim org.freedesktop.Notifications before plasmashell starts; Plasma's
+# notification server yields when the name is already owned.
+Before=plasma-plasmashell.service
+
+[Service]
+ExecStart=/usr/bin/qs -c pillbar
+# Hold plasmashell back until the bar actually owns the notification name
+# (Quickshell registers a moment after the process starts). Always exits 0,
+# so a slow claim never gets the bar killed — Plasma would just keep
+# notifications for that session.
+ExecStartPost=/bin/sh -c 'for i in $(seq 50); do gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner org.freedesktop.Notifications 2>/dev/null | grep -q true && exit 0; sleep 0.2; done; exit 0'
+Restart=on-failure
+RestartSec=2
+Slice=session.slice
+
+[Install]
+WantedBy=plasma-core.target

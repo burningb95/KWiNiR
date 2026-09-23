@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Pill bar: toggle right sidebar
+Comment=Fancy-Floating-Bar (iNiR sidebar via Quickshell IPC)
+Exec=/usr/bin/qs -c pillbar ipc call sidebarRight toggle
+NoDisplay=true
+StartupNotify=false
+X-KDE-GlobalAccel-CommandShortcut=true
