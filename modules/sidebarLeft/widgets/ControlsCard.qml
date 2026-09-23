@@ -32,7 +32,7 @@ Item {
 
         // Toggles
         Toggle { 
-            btnIcon: "dark_mode"
+            btnIcon: "candy:dark-mode"  // KWin port: CandyGlyphs
             tip: Translation.tr("Dark mode")
             active: Appearance.m3colors?.darkmode ?? false
             onClicked: root.toggleDark()

@@ -85,7 +85,7 @@ Item {
                 enableSettingsSearch: false
 
                 ConfigSwitch {
-                    buttonIcon: "dark_mode"
+                    buttonIcon: "candy:dark-mode"  // KWin port: CandyGlyphs
                     text: Translation.tr("Dark mode")
                     checked: Appearance.m3colors?.darkmode ?? false
                     onCheckedChanged: {

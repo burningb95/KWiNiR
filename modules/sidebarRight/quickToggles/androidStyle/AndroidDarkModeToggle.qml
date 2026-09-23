@@ -11,7 +11,7 @@ AndroidQuickToggleButton {
     statusText: Appearance.m3colors.darkmode ? Translation.tr("Dark") : Translation.tr("Light")
 
     toggled: Appearance.m3colors.darkmode
-    buttonIcon: "contrast"
+    buttonIcon: "candy:dark-mode"  // KWin port: CandyGlyphs
     
     mainAction: () => {
         MaterialThemeLoader.setDarkMode(!Appearance.m3colors.darkmode)

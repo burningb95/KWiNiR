@@ -319,7 +319,10 @@ draws the SVG instead of the font glyph when a name is mapped. Mapped everywhere
 `delete_sweep` (clear), `do_not_disturb_on` / `notifications_paused` (DND), `gamepad` /
 `sports_esports` (game mode), `calendar_month`, `calculate`, `search`, `hourglass_empty`
 (timer), `checklist` (todo). Generic names get an explicit `"candy:<id>"` at the call
-site instead — the right sidebar's timer tab (`schedule`) and to-do tab (`done_outline`).
+site instead — the right sidebar's timer tab (`schedule`), to-do tab (`done_outline`), and
+the three dark-mode toggles (`dark_mode`/`contrast`, `candy:dark-mode`; `dark_mode` is also
+a night marker in clocks, so it isn't mapped globally). Current picks: clear = bleachbit,
+DND = umbrello, dark mode = stellarium, to-do = gnome-todo (see `assets/candy/CREDITS.md`).
 Add a pick: drop the SVG in `assets/candy/`, add it to `files` and `materialMap`.
 
 Palette since 2026-09-23 (late): `extras/theme/colors.plum.json` — primary neon plum

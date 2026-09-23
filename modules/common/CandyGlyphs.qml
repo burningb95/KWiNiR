@@ -13,7 +13,8 @@ import Quickshell
  *    mean one thing throughout iNiR are listed.
  *  - a "candy:<id>" name, set explicitly at a call site where the Material
  *    name is too generic to map globally (e.g. "schedule" is mostly a clock,
- *    but on the widget tab it means the timer).
+ *    but on the widget tab it means the timer; "dark_mode" is also the
+ *    night marker in clocks, so only the dark-mode toggles opt in).
  *
  * The SVGs live in assets/candy (sources and licenses in its CREDITS.md).
  */
@@ -25,6 +26,7 @@ Singleton {
     readonly property var files: ({
         "clear-notifications": "clear-notifications.svg",
         "do-not-disturb": "do-not-disturb.svg",
+        "dark-mode": "dark-mode.svg",
         "game-mode": "game-mode.svg",
         "calendar": "calendar.svg",
         "calculator": "calculator.svg",
