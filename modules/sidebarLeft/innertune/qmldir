@@ -1,5 +1,4 @@
 module qs.modules.sidebarLeft.innertune
-
 singleton ITDimens 1.0 ITDimens.qml
 ITThumbnail 1.0 ITThumbnail.qml
 ITListItem 1.0 ITListItem.qml
