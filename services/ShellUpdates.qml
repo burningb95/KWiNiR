@@ -106,7 +106,13 @@ Singleton {
     property int _openOverlayDelayMs: 0
 
     // Derived
-    readonly property bool enabled: Config.options?.shellUpdates?.enabled ?? true
+    /**
+     * KWin port: the updater is off. It would git-fetch this tree (a separate
+     * repository, not iNiR's) every few hours and offer to run iNiR's
+     * installer, which isn't part of this shell. Hard-coded so the settings
+     * toggle can't turn it back on.
+     */
+    readonly property bool enabled: false
     readonly property int checkIntervalMs: (Config.options?.shellUpdates?.checkIntervalMinutes ?? 360) * 60 * 1000
     readonly property string dismissedCommit: Config.options?.shellUpdates?.dismissedCommit ?? ""
     readonly property string lastNotifiedCommit: Config.options?.shellUpdates?.lastNotifiedCommit ?? ""

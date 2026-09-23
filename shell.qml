@@ -215,4 +215,15 @@ ShellRoot {
         function close(): void { GlobalStates.closeSidebarRight() }
         function open(): void { GlobalStates.openSidebarRight("") }
     }
+
+    /**
+     * Upstream's "settings" target, minus the overlay variants (the settings
+     * overlay isn't extracted). Opens the standalone settings.qml window.
+     */
+    IpcHandler {
+        target: "settings"
+        function open(): void { GlobalStates.openSettings() }
+        function toggle(): void { GlobalStates.toggleSettings() }
+        function openWindowAt(index: int): void { GlobalStates.openSettingsPage(index, "") }
+    }
 }

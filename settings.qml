@@ -924,7 +924,8 @@ ApplicationWindow {
                         buttonRadius: Appearance.rounding.full
                         implicitWidth: 35
                         implicitHeight: 35
-                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "lock", "activate"])
+                        // KWin port: scripts/inir isn't shipped; Session.lock() has the KWin branch.
+                        onClicked: CF.Session.lock()
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter
@@ -1362,9 +1363,10 @@ ApplicationWindow {
                         colBackground: "transparent"
                         colBackgroundHover: Appearance.colors.colLayer1Hover
 
-                        onClicked: Qt.openUrlExternally(`${Directories.config}/illogical-impulse/config.json`)
+                        // KWin port: this shell's config lives in ~/.config/pillbar.
+                        onClicked: Qt.openUrlExternally(`file://${Directories.shellConfigPath}`)
                         altAction: () => {
-                            Quickshell.clipboardText = CF.FileUtils.trimFileProtocol(`${Directories.config}/illogical-impulse/config.json`);
+                            Quickshell.clipboardText = Directories.shellConfigPath;
                             configFileBtn.justCopied = true;
                             revertTextTimer.restart();
                         }
@@ -1407,6 +1409,8 @@ ApplicationWindow {
 
                     RippleButton {
                         id: overlayToggleBtn
+                        // KWin port: the settings overlay isn't part of this shell.
+                        visible: false
                         Layout.fillWidth: true
                         implicitHeight: 36
                         buttonRadius: Appearance.rounding.small

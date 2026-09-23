@@ -108,8 +108,28 @@ Singleton {
     readonly property bool settingsNativeDialogOpen:
         Object.keys(root._settingsNativeDialogs).length > 0
 
+    /**
+     * KWin port: upstream opens the settings window through scripts/inir,
+     * which is not part of this shell. This does what that script's
+     * open_detached_qml_window does: one `qs -n -p settings.qml` process
+     * from this same tree (so it shares Config), found again by its exact
+     * command line; "toggle" closes it, "open" leaves a running one alone.
+     */
+    function _kwinSettingsWindow(mode: string, index: int, section: string): void {
+        const script = 'path="$2"\n'
+            + 'pids=$(pgrep -f -x "/usr/bin/qs -n -p $path")\n'
+            + 'if [ -n "$pids" ]; then [ "$1" = toggle ] && kill $pids; exit 0; fi\n'
+            + 'cd "$HOME" && exec /usr/bin/env QS_SETTINGS_PAGE="$3" QS_SETTINGS_SECTION="$4" /usr/bin/qs -n -p "$path"'
+        Quickshell.execDetached(["/usr/bin/bash", "-c", script, "bash", mode,
+            Quickshell.shellPath("settings.qml"), String(index >= 0 ? index : ""), String(section ?? "")])
+    }
+
     function openSettingsPage(index: int, section): void {
         const requestedSection = String(section ?? "")
+        if (CompositorService.isKWin) {
+            root._kwinSettingsWindow("open", index, requestedSection)
+            return
+        }
         const isWaffle = Config.options?.panelFamily === "waffle"
             && Config.options?.waffles?.settings?.useMaterialStyle !== true
         if (isWaffle) {
@@ -129,6 +149,10 @@ Singleton {
     }
 
     function openSettings(): void {
+        if (CompositorService.isKWin) {
+            root._kwinSettingsWindow("open", -1, "")
+            return
+        }
         const isWaffle = Config.options?.panelFamily === "waffle"
             && Config.options?.waffles?.settings?.useMaterialStyle !== true
         if (isWaffle) {
@@ -143,6 +167,10 @@ Singleton {
     }
 
     function toggleSettings(): void {
+        if (CompositorService.isKWin) {
+            root._kwinSettingsWindow("toggle", -1, "")
+            return
+        }
         const isWaffle = Config.options?.panelFamily === "waffle"
             && Config.options?.waffles?.settings?.useMaterialStyle !== true
         if (isWaffle) {

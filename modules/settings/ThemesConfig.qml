@@ -2045,8 +2045,12 @@ ContentPage {
         }
     }
 
+    // KWin port: the Icon Theme card is never loaded. Its "System" picker
+    // rewrites the desktop-wide icon theme (gsettings, kdeglobals, qt5ct/qt6ct,
+    // GTK settings.ini) and the "Dock" picker targets iNiR's dock, which isn't
+    // part of this shell. IconThemeService is also guarded on its own.
     SettingsTaskLoader {
-        requested: root.activeSection === "type"
+        requested: false
         sourceComponent: Component {
     SettingsCardSection {
         settingsTaskSection: "type"

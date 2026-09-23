@@ -21,6 +21,18 @@ Singleton {
     property bool _initialized: false
     property bool _restartQueued: false
 
+    /**
+     * KWin port: never change the system icon theme. setTheme() and the
+     * saved-theme restore in ensureInitialized() both start gsettingsSetProc,
+     * whose exit chain rewrites gsettings, kdeglobals [Icons] (by hand and via
+     * kwriteconfig6), qt5ct, qt6ct and GTK settings.ini — a system-wide icon
+     * takeover that no missing script prevents, since every step is an
+     * absolute path. Here the service only reads (theme list, current
+     * theme) and those two entry points are no-ops. Hard-coded rather than
+     * tied to CompositorService.isKWin, which is false until detection runs.
+     */
+    readonly property bool systemWritesAllowed: false
+
     // Smart icon resolution: preserve app-provided identity whenever possible.
     // Only repair the duplicated Electron resources path that is known-broken.
     function smartIconName(icon, appId) {
@@ -93,7 +105,7 @@ Singleton {
         
         // Load system theme
         const savedTheme = Config.ready ? (Config.options?.appearance?.iconTheme ?? "") : ""
-        if (savedTheme && String(savedTheme).trim().length > 0) {
+        if (root.systemWritesAllowed && savedTheme && String(savedTheme).trim().length > 0) {
             root.currentTheme = String(savedTheme).trim()
             _log("[IconThemeService] Restoring saved icon theme:", root.currentTheme)
             gsettingsSetProc.themeName = root.currentTheme
@@ -115,6 +127,10 @@ Singleton {
 
         const themeStr = String(themeName).trim()
         _log("[IconThemeService] Setting icon theme:", themeStr)
+        if (!root.systemWritesAllowed) {
+            _log("[IconThemeService] KWin port: system icon theme is left alone; ignoring", themeStr)
+            return;
+        }
 
         // Update UI immediately; actual system change follows via gsettings.
         root.currentTheme = themeStr
