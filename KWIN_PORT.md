@@ -297,3 +297,16 @@ players, mixer) in **candy-icons** via `//@ pragma IconTheme candy-icons` in `sh
 and `settings.qml`. The pragma sets Qt's icon theme for that process only; the desktop
 keeps BeautyLine. Missing icons fall back through candy's `Inherits=` (breeze-dark,
 Adwaita, hicolor). UI glyphs are the Material Symbols font and are unaffected.
+
+### Candy status icons and palette
+
+The pill's four status indicators — wifi signal, battery, inbox bell, media
+volume/playback — use candy-icons `status/` icons through `modules/pill/CandyStatusIcon.qml`
+instead of the hand-drawn `WifiGlyph`/`GlyphIcon`. Candy icons carry their own gradient
+colors, so the idle→hover tint becomes opacity (0.82 → 1, `PillMotion.fast`). The
+bell's ringing state replaces upstream's unread dot. Tool buttons and Material Symbols
+elsewhere are unchanged: candy has no action icons, and those glyphs animate fill/weight.
+
+Palette: `extras/theme/colors.candy.json` is the neon palette with secondary nudged to
+candy magenta-violet (`#d63bff`) and tertiary to candy cyan-blue (`#1ec8ff`); primary
+stays neon red. `colors.neon.json` is the previous version.

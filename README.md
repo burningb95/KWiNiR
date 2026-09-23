@@ -38,7 +38,7 @@ git clone https://github.com/burningb95/KWiNiR.git ~/.config/quickshell/pillbar
 
 # palette (any Material 3 colors.json works)
 mkdir -p ~/.local/state/quickshell/user/generated
-cp ~/.config/quickshell/pillbar/extras/theme/colors.neon.json \
+cp ~/.config/quickshell/pillbar/extras/theme/colors.candy.json \
    ~/.local/state/quickshell/user/generated/colors.json
 
 # start before plasmashell so the bar owns notifications

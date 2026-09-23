@@ -44,3 +44,4 @@ Tray 1.0 Tray.qml
 VFader 1.0 VFader.qml
 WheelScroller 1.0 WheelScroller.qml
 WifiGlyph 1.0 WifiGlyph.qml
+CandyStatusIcon 1.0 CandyStatusIcon.qml

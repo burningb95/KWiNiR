@@ -1010,14 +1010,23 @@ Item {
                     width: pill.iconPx
                     height: pill.iconPx
 
-                    WifiGlyph {
-                        anchors.centerIn: parent
-                        s: pill.s
-                        level: Network.networkStrength / 100
-                        on: Network.wifiEnabled
+                    // KWin port: candy-icons signal-strength icon instead of WifiGlyph.
+                    CandyStatusIcon {
+                        id: wifiCandy
+                        anchors.fill: parent
+                        readonly property real level: Network.networkStrength / 100
+                        name: !Network.wifiEnabled ? "network-wireless-off"
+                            : level <= 0 ? "network-wireless-disconnected"
+                            : level > 0.8 ? "network-wireless-signal-excellent"
+                            : level > 0.6 ? "network-wireless-signal-good"
+                            : level > 0.4 ? "network-wireless-signal-ok"
+                            : level > 0.2 ? "network-wireless-signal-weak"
+                            : "network-wireless-signal-none"
+                        hovered: wifiArea.containsMouse
                     }
 
                     MouseArea {
+                        id: wifiArea
                         anchors.fill: parent
                         anchors.margins: -8 * pill.s
                         hoverEnabled: true
@@ -1046,14 +1055,14 @@ Item {
                         anchors.centerIn: parent
                         spacing: 5 * pill.s
 
-                        GlyphIcon {
+                        // KWin port: candy-icons battery level (10% steps).
+                        CandyStatusIcon {
                             visible: batteryIcon.showIcon
                             width: pill.iconPx
                             height: pill.iconPx
-                            name: "battery"
-                            color: Battery.isLow ? PillTheme.vermLit
-                                : (Battery.isCharging ? PillTheme.flameGlow : PillTheme.iconDim)
-                            stroke: 1.7
+                            readonly property string step: String(Math.round(Math.max(0, Math.min(1, Battery.percentage)) * 10) * 10).padStart(3, "0")
+                            name: "battery-" + step + (Battery.isCharging ? "-charging" : "")
+                            hovered: batteryArea.containsMouse
                         }
 
                         Text {
@@ -1076,6 +1085,7 @@ Item {
                         hoverEnabled: true
                         enabled: hover.live
                         cursorShape: Qt.PointingHandCursor
+                        id: batteryArea
                         onClicked: pill.requestSurface("battery")
                         onContainsMouseChanged: if (containsMouse) pill.soulTarget = "battery"
                     }
@@ -1088,15 +1098,17 @@ Item {
                     width: pill.iconPx
                     height: pill.iconPx
 
-                    GlyphIcon {
+                    // KWin port: candy-icons bell. The ringing bell already marks
+                    // unread notifications, so upstream's unread dot is dropped.
+                    CandyStatusIcon {
                         anchors.fill: parent
-                        name: "inbox"
-                        color: inboxArea.containsMouse ? PillTheme.cream : PillTheme.iconDim
-                        stroke: 1.7
+                        name: Notifications.silent ? "notifications-disabled"
+                            : Notifications.unread > 0 ? "notification-active" : "notification-inactive"
+                        hovered: inboxArea.containsMouse
                     }
 
                     Rectangle {
-                        visible: Notifications.unread > 0
+                        visible: false
                         anchors.top: parent.top
                         anchors.right: parent.right
                         width: Math.max(5, 5 * pill.s)
@@ -1148,15 +1160,17 @@ Item {
                         anchors.centerIn: parent
                         spacing: 8 * pill.s
 
-                        GlyphIcon {
+                        // KWin port: candy-icons volume / playback state.
+                        CandyStatusIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 20 * pill.s
                             height: 20 * pill.s
-                            name: pill.mediaVolumeFeedback >= 0
-                                ? (pill.mediaVolumeFeedback <= 0 ? "speaker-off" : "speaker")
-                                : (MprisController.activePlayer?.isPlaying ? "pause-s" : "music")
-                            color: mediaShortcutArea.containsMouse ? PillTheme.cream : PillTheme.vermLit
-                            stroke: 1.7
+                            readonly property real vol: pill.mediaVolumeFeedback
+                            name: vol >= 0
+                                ? (vol <= 0 ? "audio-volume-muted" : vol < 0.34 ? "audio-volume-low"
+                                    : vol < 0.67 ? "audio-volume-medium" : "audio-volume-high")
+                                : (MprisController.activePlayer?.isPlaying ? "media-playback-playing" : "media-playback-paused")
+                            hovered: mediaShortcutArea.containsMouse
                         }
 
                         Text {
