@@ -260,3 +260,32 @@ format — `avatar.png`, `avatar.jpg`; Qt probes the suffix), a bar-only path ad
 `modules/common/Directories.qml`. Upstream's fallbacks follow: the AccountsService icon,
 `~/.face`, `~/.face.icon` — those are the account picture Plasma and SDDM show, so they
 are left alone. Restart the bar after replacing the image.
+
+## Settings window (KWin port)
+
+iNiR's standalone settings window (`settings.qml`, 173 extra files) runs as its own
+process, `qs -n -p ~/.config/quickshell/pillbar/settings.qml`, sharing this tree's
+Config. Open it from the right sidebar's settings button or
+`qs -c pillbar ipc call settings toggle` (also `open`, `openWindowAt <page>`).
+`GlobalStates._kwinSettingsWindow()` replaces upstream's `scripts/inir settings-window`.
+
+Safety patches (audit of every command the closure can run):
+
+- **`IconThemeService.systemWritesAllowed: false`.** Upstream's icon picker — and even
+  *opening* its dropdown, which restores `appearance.iconTheme` — runs gsettings,
+  rewrites `kdeglobals [Icons]` (by hand and via kwriteconfig6), qt5ct, qt6ct and GTK
+  `settings.ini`, all by absolute path. The missing `scripts/` did not block this.
+  The Themes page's Icon Theme card is also never loaded.
+- **`ShellUpdates.enabled: false`.** It git-fetches the shell's own tree and offers to run
+  iNiR's installer.
+- Color theming needs no new patch: every external-apply path funnels into
+  `MaterialThemeLoader._applyExternalTheming()` (hard-disabled) and `scripts/`.
+  Picking a color preset *does* overwrite the bar's own `colors.json`; the neon palette
+  is in `extras/theme/colors.neon.json`.
+- `settings.qml`: lock button → `Session.lock()`, config-file button →
+  `~/.config/pillbar/config.json`, overlay button hidden (overlay not extracted).
+
+Pages that do nothing on KWin are hidden through upstream's own navigation config
+(`settingsUi.categories` → `hidden`), editable in the window via *Edit navigation*.
+Buttons that call `scripts/` (wallpaper regeneration, screenshot tools, niri
+config) silently do nothing.
