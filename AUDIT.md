@@ -16,8 +16,7 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 4, remaining: (3) IPC surface — every target's functions, flag command execution / secret reads;
-(4) secrets — AI/weather keys, `.gitignore`, `~/.config/pillbar` permissions; (5) network —
+Phase 4, remaining: (5) network —
 HTTPS-only (ip-api.com is plain HTTP: Weather.qml:866), timeouts, failure handling;
 (6) temp files — #1, #2.
 
@@ -184,6 +183,10 @@ needs approval.
 | 31 | **H** | NotificationUtils / NotificationItem / PillLink | notification body (RichText), summary and pill row (auto-detected styled text) **fetched remote `<img>`** the moment a notification arrived — any app/website gets a read receipt + your IP (local HTTP server: 1 request → 0) | fixed `b492ed5` (remote `<img>` dropped; local/file/data images kept) |
 | 32 | M | Marquee, PillOsd, Pill, MediaPlayerWidget, PillMixer, Tooltip | MPRIS titles/artists (a web page's title via the browser) and device names in auto-detected styled text — same remote-image fetch (fake MPRIS player: 2 requests → 0) | fixed `0785afa` (plain text; normal titles identical; tooltip keeps markup minus remote images) |
 | 33 | M | modules/sidebarLeft/aiChat/MessageTextBlock.qml:164 | AI replies render as Markdown and Qt fetches `![](http…)`/`<img>` on display — prompt-injection exfiltration channel (offscreen Qt test: 1 request → 0) | fixed `757fcc5` (remote images become links; LaTeX images kept) |
+| 34 | M | modules/common/Config.qml | the settings window builds pages while Config is still loading, so every control wrote its **default** before the file was read (~40 writes traced with `ready=false`); the queue survived the load, so the file was rewritten, and an external change while settings was open would re-apply those stale defaults over real settings | fixed `698fab8` (queue dropped on initial load; equal plain values not written) |
+| 35 | I | IPC (Quickshell socket) | socket under `/run/user/1000` (0700) — same user only, not visible to Flatpak apps; every function is something the user could already do. Riskiest targets live in lazy services not loaded here: `autostart.addCommand`, `shellUpdate.performUpdate` (would pull upstream iNiR over the port), `appCatalog.install` | no action — keep ShellUpdates/Autostart unloaded |
+| 36 | L | `~/.config/pillbar/config.json` `hotspot.password` | the stored hotspot password is **iNiR's public factory default** — not a leak, but a hotspot started from the pill would use a known password | needs approval — set your own before ever using the hotspot |
+| 37 | L | `~/.config/pillbar/` | config + ~10 `config.json.bak-*` are world-readable (0644); they hold the hotspot password. AI keys are in the system keyring (secret-tool), weather needs no key, git history scanned clean (API/private-key patterns), `.gitignore` covers `__pycache__` | needs approval — `chmod 600` the config and backups (outside the repo, so not done) |
 | 30 | I | services/Ai.qml:1672 | AI `run_shell_command` runs model-chosen bash — **not offered** with your `ai.tool: functions`, and every raw command waits for your Approve click | no action |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
@@ -237,5 +240,8 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   (notification, fake MPRIS player, offscreen Markdown) and re-tested after (#31–#33).
   Remaining AutoText labels show our own strings or local data. The two "Audit test"
   notifications from these tests are in the notification history.
+- Phase 4 (3)(4): IPC listed live (`qs ipc show`) + lazy targets from source (#35); secrets (#36, #37).
+  Chasing a config write seen at 09:19 found #34 (the settings harness and the settings
+  window write the same way). Every config test restored the original bytes (`cmp`).
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
