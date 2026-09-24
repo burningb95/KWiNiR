@@ -37,6 +37,34 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         interactive: !root.editMode && !root.dragPending
 
+        // KWin port: the same wheel handling StyledFlickable uses (interactions.scrolling.*),
+        // so this tab doesn't crawl at Qt's default wheel speed. Declared before the content
+        // so widgets stay on top; they pass wheel events through (DraggableWidgetContainer).
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            enabled: (Config.options?.interactions?.scrolling?.fasterTouchpadScroll ?? false) && flickable.interactive
+            onWheel: function(wheelEvent) {
+                const scrolling = Config.options?.interactions?.scrolling
+                const threshold = scrolling?.mouseScrollDeltaThreshold ?? 120
+                const factor = Math.abs(wheelEvent.angleDelta.y) >= threshold
+                    ? (scrolling?.mouseScrollFactor ?? 120) : (scrolling?.touchpadScrollFactor ?? 450)
+                const maxY = Math.max(0, flickable.contentHeight - flickable.height)
+                const base = wheelScrollAnim.running ? wheelScrollAnim.to : flickable.contentY
+                wheelScrollAnim.to = Math.max(0, Math.min(base - wheelEvent.angleDelta.y / threshold * factor, maxY))
+                wheelScrollAnim.restart()
+                wheelEvent.accepted = true
+            }
+        }
+        NumberAnimation {
+            id: wheelScrollAnim
+            target: flickable
+            property: "contentY"
+            duration: Appearance.animation.scroll.duration
+            easing.type: Appearance.animation.scroll.type
+            easing.bezierCurve: Appearance.animation.scroll.bezierCurve
+        }
+
         Behavior on anchors.bottomMargin {
             enabled: Appearance.animationsEnabled
             NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
