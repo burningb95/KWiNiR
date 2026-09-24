@@ -120,7 +120,8 @@ anywhere in the tree.
 - **Left** — iNiR's feature sidebar: Widgets / Wallpapers / News tabs, clock,
   weather, week strip, quick toggles, CPU/RAM rings, Quick Note, AI chat, anime,
   translator, Wallhaven. **Replaces the Garuda Neon Sidebar**, which is retired
-  (autostart renamed to `.desktop.disabled`; code kept as a style reference). Opens
+  (autostart entry moved out of `~/.config/autostart/` — a `.desktop.disabled` rename
+  is still launched by systemd's autostart generator; code kept as a style reference). Opens
   on the Widgets tab; opening it makes no network requests — AI chat, News and the
   booru views only do when you use them (AI chat sends to Gemini/Mistral with keys).
 - **Right** — iNiR's control center: quick toggles, sliders, network, bluetooth,
@@ -198,7 +199,8 @@ when the name is already owned, so the bar only has to register **first**:
   (`WantedBy=plasma-core.target`, `After=plasma-kwin_wayland.service`,
   `Before=plasma-plasmashell.service`). Its `ExecStartPost` holds plasmashell back until
   the bar actually owns the name (≤10 s, always succeeds). This **replaces** the XDG
-  autostart entry, now `~/.config/autostart/pillbar.desktop.disabled`.
+  autostart entry, now moved out of `~/.config/autostart/` (a `.desktop.disabled` rename
+  was still launched by systemd's autostart generator — a second bar ran on 2026-09-24).
 - Popups: the pill shows notifications as **toasts** on its own screen (DP-1,
   `bar.pill.toasts`); iNiR's standalone `NotificationPopup` covers the other
   notification screens (DP-3). Rule lifted verbatim from `ShellIiPanelsImpl.qml` into
