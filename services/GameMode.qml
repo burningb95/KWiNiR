@@ -254,6 +254,9 @@ esac; done`, "bash", root._kwinStateFile, ...list]
 
     // Check if ANY window across all workspaces is fullscreen
     function checkAnyFullscreenWindow(): bool {
+        // KWin port: KWin gives Quickshell no window list; the bridge's KWin script
+        // reports whether a fullscreen window is visible on the current desktop.
+        if (CompositorService.isKWin) return KWinBridge.fullscreen
         if (!CompositorService.isNiri) return false
         const windows = NiriService.liveWindows
         if (!windows || !Array.isArray(windows)) return false

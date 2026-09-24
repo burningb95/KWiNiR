@@ -99,6 +99,10 @@ ShellRoot {
             Qt.callLater(() => MaterialThemeLoader.reapplyTheme())
     }
 
+    // KWin port: singletons are lazy; this binding starts the KWin bridge helper
+    // (game-mode fullscreen detection, file-transfer progress) with the bar.
+    readonly property bool _kwinBridgeWake: KWinBridge.enabled
+
     /**
      * KWin port: caffeine. Every idle toggle (both quick-toggle styles and the
      * left sidebar's tools view) flips Idle.inhibit, but upstream only acts on it

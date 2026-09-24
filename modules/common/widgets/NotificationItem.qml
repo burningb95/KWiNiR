@@ -252,6 +252,16 @@ Item { // Notification item area
                 }
             }
 
+            // KWin port: progress for notifications carrying the standard "value"
+            // hint (file transfers from the KWin bridge; any app may send it).
+            StyledProgressBar {
+                visible: (root.notificationObject?.progress ?? -1) >= 0
+                Layout.fillWidth: true
+                Layout.topMargin: 3
+                Layout.bottomMargin: 2
+                value: Math.max(0, root.notificationObject?.progress ?? 0) / 100
+            }
+
             ColumnLayout { // Expanded content
                 id: expandedContentColumn
                 Layout.fillWidth: true

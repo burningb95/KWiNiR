@@ -698,6 +698,16 @@ ContentPage {
                 }
             }
 
+            // KWin port: KIO job progress via the bridge helper (org.kde.JobViewServer).
+            ConfigSwitch {
+                visible: CompositorService.isKWin
+                buttonIcon: "file_copy"
+                text: Translation.tr("File-transfer progress")
+                checked: Config.options?.notifications?.jobProgress ?? true
+                onCheckedChanged: Config.setNestedValue("notifications.jobProgress", checked)
+                StyledToolTip { text: Translation.tr("Show Dolphin copies, downloads and other KDE file jobs as progress notifications, with Cancel and Pause") }
+            }
+
             // KWin port: page 7 reset (popup timings, position, quiet hours, blocked apps…).
             PageResetFooter {
                 Layout.fillWidth: true

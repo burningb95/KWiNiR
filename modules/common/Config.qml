@@ -3088,6 +3088,9 @@ Singleton {
                 property bool ignoreAppTimeout: false
                 // Max popup lifetime (ms). Caps persistent notifications. 0 = no cap.
                 property int maxPopupLifetime: 30000
+                // KWin port: show KIO file-transfer progress (Dolphin copies, downloads)
+                // as progress notifications; the KWin bridge helper owns org.kde.JobViewServer.
+                property bool jobProgress: true
                 // Posición del popup de notificaciones: topRight, bottomRight, topLeft, bottomLeft
                 property string position: "topRight"
                 // Margen respecto a los bordes de pantalla (px)

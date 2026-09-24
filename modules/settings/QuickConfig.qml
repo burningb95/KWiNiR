@@ -1851,17 +1851,13 @@ ContentPage {
             SettingsSwitch {
                 buttonIcon: "fullscreen"
                 text: Translation.tr("Auto-detect fullscreen")
-                // KWin port: detection reads niri's window list; KWin gives Quickshell
-                // none, so on KWin game mode is manual (toggle / IPC) for now.
-                enabled: !CompositorService.isKWin
+                // KWin port: on KWin the fullscreen state comes from the bridge's KWin script.
                 checked: Config.options?.gameMode?.autoDetect ?? true
                 onCheckedChanged: {
                     Config.setNestedValue("gameMode.autoDetect", checked)
                 }
                 StyledToolTip {
-                    text: CompositorService.isKWin
-                        ? Translation.tr("Not available on KWin yet: it needs the fullscreen state of windows, which KWin doesn't give this shell. Use the Game mode toggle.")
-                        : Translation.tr("Automatically enable Game Mode when apps go fullscreen")
+                    text: Translation.tr("Automatically enable Game Mode when apps go fullscreen")
                 }
             }
 

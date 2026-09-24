@@ -43,6 +43,11 @@ Singleton {
         property string body: notification?.body ?? ""
         property string image: notification?.image ?? ""
         property string summary: notification?.summary ?? ""
+        // KWin port: freedesktop "value" hint (0-100), e.g. file-transfer progress; -1 = none.
+        readonly property int progress: {
+            const v = Number(notification?.hints?.value)
+            return Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : -1
+        }
         property double time
         property string urgency: notification?.urgency.toString() ?? "normal"
         property Timer timer
