@@ -17,8 +17,14 @@ freedesktop notification, updated in place (replaces_id), carrying the integer
 "value" hint (progress bar in dunst / mako / swaync / this bar) and the
 "transfer" category, with Cancel / Pause actions wired back to the job.
 
+  KWin state polled in-process every 5 s (activeOutputName, activeEffects — KWin
+  sends no change signal for either), so the bar doesn't spawn two gdbus calls a
+  poll. Every poll is reported (the bar may have refreshed the output itself in between,
+  so "unchanged since the last report" doesn't mean the bar has it).
+
 stdout events: {"type":"ready"}  {"type":"fullscreen","value":bool}
                {"type":"jobs","count":int}
+               {"type":"output","value":str}  {"type":"overview","value":bool}
 """
 
 import ctypes
@@ -59,6 +65,7 @@ SCRIPT_NAME = "kwinir-fullscreen"
 SHOW_DELAY_MS = 1000       # quick jobs never flash a notification (KIO itself waits 500 ms)
 UPDATE_INTERVAL_MS = 500   # at most two notification updates per second per job
 NOTIFY_TIMEOUT_MS = 3000
+KWIN_STATE_INTERVAL_MS = 5000  # same cadence as KWinService's own fallback poll
 
 BRIDGE_XML = """
 <node>
@@ -365,6 +372,8 @@ class Bridge:
         self.bridge_name_owned = False
         self.kwin_present = False
         self.script_loaded = False
+        self.last_output = None
+        self.last_overview = None
         self.view_v3 = Gio.DBusNodeInfo.new_for_xml(VIEW_V3_XML).interfaces[0]
         self.view_v2 = Gio.DBusNodeInfo.new_for_xml(VIEW_V2_XML).interfaces[0]
 
@@ -375,6 +384,7 @@ class Bridge:
                                        self._on_bridge_name, self._on_bridge_name_lost)
         Gio.bus_watch_name_on_connection(self.bus, "org.kde.KWin", Gio.BusNameWatcherFlags.NONE,
                                          self._on_kwin_appeared, self._on_kwin_vanished)
+        GLib.timeout_add(KWIN_STATE_INTERVAL_MS, self._poll_kwin_state)
 
         if jobs_enabled:
             server = Gio.DBusNodeInfo.new_for_xml(SERVER_XML)
@@ -408,12 +418,44 @@ class Bridge:
         self.kwin_present = True
         if self.bridge_name_owned:
             self.load_script()
+        self._poll_kwin_state()
 
     def _on_kwin_vanished(self, *_args):
         if self.kwin_present:
             emit({"type": "fullscreen", "value": False})
         self.kwin_present = False
         self.script_loaded = False
+        self.last_output = None
+        self.last_overview = None
+
+    # -- KWin state (focused output, overview) ----------------------------------
+    def _poll_kwin_state(self):
+        if self.kwin_present:
+            self.bus.call("org.kde.KWin", "/KWin", "org.kde.KWin", "activeOutputName", None,
+                          GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, NOTIFY_TIMEOUT_MS,
+                          None, self._on_output_reply)
+            self.bus.call("org.kde.KWin", "/Effects", "org.freedesktop.DBus.Properties", "Get",
+                          GLib.Variant("(ss)", ("org.kde.kwin.Effects", "activeEffects")),
+                          GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, NOTIFY_TIMEOUT_MS,
+                          None, self._on_effects_reply)
+        return GLib.SOURCE_CONTINUE
+
+    def _on_output_reply(self, bus, result):
+        try:
+            name = bus.call_finish(result).unpack()[0]
+        except GLib.Error:
+            return
+        if name:
+            self.last_output = name
+            emit({"type": "output", "value": name})
+
+    def _on_effects_reply(self, bus, result):
+        try:
+            effects = bus.call_finish(result).unpack()[0]
+        except GLib.Error:
+            return
+        self.last_overview = "overview" in effects
+        emit({"type": "overview", "value": self.last_overview})
 
     def _kwin(self, path, iface, method, args, sig, reply):
         return self.bus.call_sync("org.kde.KWin", path, iface, method,

@@ -13,7 +13,9 @@ import qs.services
  *     reported by a KWin script the helper loads at runtime;
  *   - file-transfer progress: it owns org.kde.JobViewServer and shows KIO jobs
  *     (Dolphin copies, downloads) as progress notifications
- *     (notifications.jobProgress, default on).
+ *     (notifications.jobProgress, default on);
+ *   - KWin state: focused output and overview, polled in-process (no gdbus spawns);
+ *     KWinService uses these while `statePolled` and falls back to its own poll.
  * The helper is a child of this process: it starts and stops with the bar, and
  * is restarted if it dies. Only the bar process runs it — the settings window
  * loads services too, and a second helper would take the D-Bus names over.
@@ -26,6 +28,12 @@ Singleton {
     property bool ready: false
     property bool fullscreen: false
     property int activeJobs: 0
+    property string activeOutput: ""
+    property bool overview: false
+    readonly property bool statePolled: root.ready && root.activeOutput !== ""
+    // Emitted on every poll report (not just on change), so consumers re-assert state.
+    signal outputPolled(string name)
+    signal overviewPolled(bool open)
 
     readonly property var command: ["/usr/bin/python3", Quickshell.shellPath("helpers/kwinir_bridge.py")]
         .concat(root.jobProgress ? ["--jobs"] : [])
@@ -48,6 +56,8 @@ Singleton {
         case "ready": root.ready = true; break
         case "fullscreen": root.fullscreen = event.value === true; break
         case "jobs": root.activeJobs = Math.max(0, Number(event.count) || 0); break
+        case "output": root.activeOutput = String(event.value ?? ""); root.outputPolled(root.activeOutput); break
+        case "overview": root.overview = event.value === true; root.overviewPolled(root.overview); break
         }
     }
 
@@ -61,6 +71,8 @@ Singleton {
             root.ready = false
             root.fullscreen = false
             root.activeJobs = 0
+            root.activeOutput = ""
+            root.overview = false
             if (root.enabled && !root._restartPending) {
                 console.warn(`[KWinBridge] helper exited (${code}), restarting in 5 s`)
                 root._restart(5000)

@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.services
 
 /**
  * KWin backend for the pill bar, shaped to match the slice of NiriService that
@@ -17,7 +18,9 @@ import Quickshell.Io
  * The one exception is `currentOutput`. KWin emits no signal when window focus
  * moves between monitors, so activeOutputName() is re-read on desktop changes
  * and otherwise on a slow timer. Consumers that need it exactly (Brightness)
- * call refreshActiveOutput() at the moment they act.
+ * call refreshActiveOutput() at the moment they act. The slow timer (and the
+ * overview check) runs inside the KWin bridge helper when it is up, so idle
+ * polling spawns no processes; this file's own timer is the fallback.
  *
  * Deliberately not implemented, because KWin has no equivalent:
  *   - isOverviewHotCornerActive(): electric-border hover state is not queryable.
@@ -226,9 +229,23 @@ Singleton {
         }
     }
 
+    // Bridge-polled state (same 5 s cadence, no process spawns).
+    Connections {
+        target: KWinBridge
+        function onOutputPolled(name) {
+            if (name !== "")
+                root.currentOutput = name;
+        }
+        function onOverviewPolled(open) {
+            root.inOverview = open;
+        }
+    }
+
+    // Fallback poll: only while the bridge isn't reporting (not started yet, restarting,
+    // or the settings process, which doesn't run the bridge).
     Timer {
         interval: 5000
-        running: true
+        running: !KWinBridge.statePolled
         repeat: true
         onTriggered: {
             root.refreshActiveOutput();
