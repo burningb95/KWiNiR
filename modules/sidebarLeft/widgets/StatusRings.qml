@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import qs
 import QtQuick.Layouts
 import QtQuick.Controls
 import qs.modules.common
@@ -11,7 +12,10 @@ Item {
     id: root
     implicitHeight: 64
 
-    property QtObject resourceMonitor: ResourceUsageMonitor { target: root }
+    // KWin port: also gate on the sidebar being open. The left sidebar's window stays mapped
+    // when closed (content slides away), so `visible` never drops and the rings kept the
+    // system-stats poll running for the rest of the session after the first open.
+    property QtObject resourceMonitor: ResourceUsageMonitor { target: root; active: GlobalStates.sidebarLeftOpen }
 
     RowLayout {
         anchors.fill: parent
