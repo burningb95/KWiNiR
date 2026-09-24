@@ -212,6 +212,18 @@ Singleton {
                 }
             }
         }
+        // If the stream ever ends, restart it and re-read everything it may have missed.
+        onExited: monitorRestart.restart()
+    }
+
+    Timer {
+        id: monitorRestart
+        interval: 2000
+        onTriggered: {
+            monitor.running = true;
+            root.refreshDesktops();
+            root.refreshCurrent();
+        }
     }
 
     Timer {
