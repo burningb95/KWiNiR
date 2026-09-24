@@ -72,6 +72,8 @@ Singleton {
     FileView {
         path: root.userAvatarPathAccountsService
         watchChanges: true
+        // Optional: most users have no AccountsService picture; don't log "does not exist" every start.
+        printErrors: false
         onFileChanged: root.userAvatarRevision++
     }
     property string coverArt: `${Directories.cachePath}/media/coverart`
