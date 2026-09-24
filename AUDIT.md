@@ -16,11 +16,12 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 2, remaining parts: (b) config robustness — feed wrong types / unknown values for the port's
-own options (rowOrder, candy, hiddenTypes, shellLayout, jobProgress, light.night) through
-`tools/cfgset.py` on staging and watch the log; (c) init races — lazy singletons whose IPC
-targets are missing at start (#3). Environment items that can't be exercised safely (monitor
-hotplug, sleep/resume, KWin restart) get a code review instead.
+Phase 3 (efficiency): (1) inventory repeating timers (`tools/audit-inventory.py`) and
+classify each as must-stay / replaceable by a signal or file watch / idle when hidden;
+(2) check what keeps running while the sidebars are closed (sidebar Loaders, animations,
+YtMusic/other services instantiated at start that he doesn't use); (3) duplicate fetching;
+(4) measure idle CPU/RSS with `tools/measure-idle.sh 60` after the changes and compare
+with *Baseline*.
 
 ## Plan
 
@@ -106,7 +107,8 @@ Measured with `tools/measure-idle.sh 60`, bar idle, bar process tree:
 
 | Area | Status |
 |---|---|
-| shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children) |
+| shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children, IPC) |
+| phase 2 robustness: Battery, BluetoothStatus, Audio, MprisController, Network, KWinService, Hyprsunset, Config | reviewed / fixed |
 | modules/common (Config, Appearance, Directories, Persistent, functions) | todo |
 | modules/common/widgets | todo |
 | modules/pill | todo |
@@ -131,7 +133,7 @@ needs approval.
 |---|---|---|---|---|
 | 1 | M | services/Ai.qml:959, services/ai/GeminiApiStrategy.qml:238 | AI request script and upload temp files at fixed `/tmp/quickshell/ai/*` paths; the request script is executed | open |
 | 2 | L | services/YtMusic.qml:2043, services/WebWallpaper.qml:75, services/Brightness.qml:512, modules/common/Directories.qml:78,107,108 | other fixed `/tmp` paths (mpv socket, pid file, screenshots, images, cliphist decode) | open |
-| 3 | L | services/GlobalActions.qml, other lazy singletons | IPC targets only exist after the singleton is created ("Target not found" for `globalActions` right after start) | open |
+| 3 | L | services/GlobalActions.qml, other lazy singletons | IPC targets only exist after the singleton is created. 11 lazy at start: ai, appCatalog, autostart, cliphistService, packageSearch, dev, globalActions, minimize, shellUpdate, voiceSearch, widgetpower — none bound to a hotkey | needs approval — recommend **leave**: waking them would start iNiR's Autostart and ShellUpdates services |
 | 4 | I | shell.qml / sidebars | sidebars keep ~250 MB resident after first open (upstream "resume where you left off") | needs approval |
 | 5 | L | services/AppLauncher.qml:199 | browser preset in settings also runs `xdg-settings set default-web-browser` (system setting) | needs approval |
 | 6 | L | settings process | Quick page instantiates the notification server in the settings process, which retries registration if the bar's server disappears | open |
@@ -142,6 +144,9 @@ needs approval.
 | 11 | L | services/CustomWidgets.qml:44 | Monitors page ran the unshipped scan-widgets.sh ("Process failed to start") | fixed `3116dcd` |
 | 13 | M | services/KWinService.qml | KWin signal monitor (`gdbus monitor`) never restarted if it exited — workspace dots froze until the bar restarted | fixed `a690406` (restart after 2 s + refresh; kill test on staging) |
 | 14 | M | services/Network.qml:238 | nmcli monitor restarted instantly on exit; with an nmcli that fails at once it respawned ~250×/s (staging, fake failing nmcli: 2957 launches in 12 s → 10 after) | fixed `f5daecc` (1 s delay) |
+| 15 | M | services/YtMusic.qml:106 | `onAudioQualityChanged` wrote the config value it is bound to back to Config, so **every bar start rewrote `config.json`** (same values, different formatting; a write that can race external edits). Found by the config fault-injection test | fixed `93d75c7` (write only when different; verified byte-identical after restart) |
+| 16 | I | modules/pill/Pill.qml, JsonAdapter | config robustness: wrong types, junk list items, >4 dividers, deleted sections and unknown keys all fall back without a crash (warnings only); rowOrder never drops items | no action |
+| 17 | L | services/Hyprsunset.qml:195 | a non-numeric `light.night.colorTemperature` becomes 0 → clamped to 1000 K (very red) rather than the default | needs approval (fall back to default when < 1000); not runtime-tested — it would write kwinrc |
 | 12 | M | services/CustomWidgets.qml:227,403 | widget create/remove build `rm -rf "…/${widgetId}"` shell strings from a name (injection pattern); only reachable from the hidden Desktop Widgets page | open (phase 4) |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
@@ -168,5 +173,15 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   chaining / early return), Audio (optional chaining on sink/source), MprisController
   (`activePlayer &&` guards) — no issues. Monitors: Hyprsunset, clipboard watcher and cava
   restart themselves; KWinService didn't (#13), Network spun (#14).
+- Phase 2b (config robustness), staging, 7 injected faults on a backup-restored config
+  (backup `~/.local/share/Fancy-Floating-Bar/config.json.bak-before-audit-cfgtest-1790257193`):
+  rowOrder string / junk / 7 dividers, candy wrong types, hiddenTypes=42 (right sidebar opened),
+  jobProgress string, shellLayout string, deleted `sidebar` + unknown key → survived, warnings
+  only (#16). Found the startup config rewrite (#15). Config restored **byte-identical**.
+  Night-light values not injected (would write kwinrc) → code review (#17).
+- Phase 2c (races/environment): 11 lazy IPC targets (#3). Unit has `Restart=on-failure`; the bar
+  gets `QT_WAYLAND_RECONNECT=1` like plasmashell. Not exercised (would disrupt the session):
+  KWin crash, plasmashell restart, sleep/resume, monitor hotplug — code review only; monitors
+  now all self-restart (#13, #14), screens come from Quickshell `Variants` + `screenList`.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
