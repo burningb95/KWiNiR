@@ -32,7 +32,7 @@ IconImage {
         // loader then fails to decode on every startup, forever, because the
         // [ -f ] guard never re-fetches it.
         // KWin port: values go in as arguments, not spliced into the script (injection).
-        command: ["/usr/bin/bash", "-c", '[ -f "$2" ] || /usr/bin/curl -sfL --remove-on-error "$1" -o "$2" -H "User-Agent: $3"',
+        command: ["/usr/bin/bash", "-c", '[ -f "$2" ] || /usr/bin/curl -sfL --max-time 30 --remove-on-error "$1" -o "$2" -H "User-Agent: $3"',
             "bash", root.faviconUrl, root.faviconFilePath, root.downloadUserAgent]
         onExited: (exitCode, exitStatus) => {
             if (exitCode === 0) root.urlToLoad = root.faviconFilePath

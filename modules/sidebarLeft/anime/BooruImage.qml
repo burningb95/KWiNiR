@@ -99,7 +99,7 @@ Button {
         id: downloadProcess
         running: false
         // KWin port: URL and paths as arguments (they come from a remote API reply).
-        command: ["/usr/bin/bash", "-c", 'mkdir -p "$1" && [ -f "$2" ] || curl -sSL "$3" -o "$2"',
+        command: ["/usr/bin/bash", "-c", 'mkdir -p "$1" && [ -f "$2" ] || curl -sSL --max-time 30 "$3" -o "$2"',
             "bash", root.previewDownloadPath, root.filePath, String(root.imageData?.preview_url ?? root.imageData?.sample_url ?? "")]
         onExited: (exitCode, exitStatus) => {
             imageObject.source = `${previewDownloadPath}/${root.fileName}`
@@ -273,7 +273,7 @@ Button {
                         const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath;
                         const localPath = `${targetPath}/${root.fileName}`;
                         Quickshell.execDetached(["/usr/bin/bash", "-c",
-                            'mkdir -p "$1" && curl "$2" -o "$3" && notify-send "$4" "$3" -a Shell',
+                            'mkdir -p "$1" && curl --connect-timeout 15 "$2" -o "$3" && notify-send "$4" "$3" -a Shell',
                             "bash", targetPath, String(root.imageData.file_url ?? ""), localPath, Translation.tr("Download complete")
                         ])
                         if (Config.options?.sidebar?.openFolderOnDownload ?? false)
@@ -289,7 +289,7 @@ Button {
                         const localPath = `${targetPath}/${root.fileName}`;
                         const mode = Appearance.m3colors.darkmode ? "dark" : "light";
                         Quickshell.execDetached(["/usr/bin/bash", "-c",
-                            'mkdir -p "$1" && curl -sSL "$2" -o "$3" && "$4" --image "$3" --mode "$5"',
+                            'mkdir -p "$1" && curl -sSL --connect-timeout 15 "$2" -o "$3" && "$4" --image "$3" --mode "$5"',
                             "bash", targetPath, String(root.imageData.file_url ?? ""), localPath, Directories.wallpaperSwitchScriptPath, mode
                         ])
                     }
