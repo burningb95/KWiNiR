@@ -3864,7 +3864,9 @@ Singleton {
         // reach disk — external apps then read stale wallpaper colors.
         _writeGeneratedFiles(colorsJsonStr, paletteJsonStr, appPaletteJsonStr, terminalJsonStr, themeMetaStr, scssStr, chromiumRgb);
 
-        if ((Config.options?.appearance?.wallpaperTheming?.enableVesktop ?? true) !== false) {
+        // KWin port: never theme other apps (MaterialThemeLoader.defaultApplyExternal is always false).
+        if (MaterialThemeLoader.defaultApplyExternal
+                && (Config.options?.appearance?.wallpaperTheming?.enableVesktop ?? true) !== false) {
             _log("[ThemePresets] Triggering Vesktop theme generation wrapper")
             Quickshell.execDetached([
                 "/usr/bin/bash",

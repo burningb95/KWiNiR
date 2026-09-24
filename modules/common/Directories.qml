@@ -106,7 +106,10 @@ Singleton {
     property string generatedWallpaperCategoryPath: `${Directories.stateUserPath}/generated/wallpaper/category.txt`
     property string cliphistDecode: FileUtils.trimFileProtocol(`/tmp/quickshell/media/cliphist`)
     property string screenshotTemp: "/tmp/quickshell/media/screenshot"
-    property string wallpaperSwitchScriptPath: `${Directories.scriptsPath}/colors/switchwall.sh`
+    // KWin port: switchwall.sh regenerates colors for terminals, GTK, Qt, etc. — the
+    // system-wide takeover this port exists to avoid. Its 15 call sites all read
+    // this path, so it is blocked here on purpose (not merely "not shipped").
+    property string wallpaperSwitchScriptPath: "/nonexistent/kwin-port-blocked/switchwall.sh"
     property string defaultAiPrompts: Quickshell.shellPath("defaults/ai/prompts")
     property string userAiPrompts: FileUtils.trimFileProtocol(`${Directories.shellConfig}/ai/prompts`)
     property string userActions: FileUtils.trimFileProtocol(`${Directories.shellConfig}/actions`)

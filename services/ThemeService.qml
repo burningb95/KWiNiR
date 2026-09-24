@@ -135,6 +135,10 @@ Singleton {
     }
 
     function _triggerVesktopThemeGeneration(): void {
+        // KWin port: theming other apps (Vesktop here) is the takeover this port
+        // avoids. Same switch as MaterialThemeLoader's external apply (always off);
+        // the missing script is not the only barrier now that scripts/ exists.
+        if (!MaterialThemeLoader.defaultApplyExternal) return
         root._log("[ThemeService] Triggering Vesktop theme generation wrapper")
         Qt.callLater(() => {
             Quickshell.execDetached([
@@ -208,7 +212,11 @@ Singleton {
         root._regenPending = false
         regenCooldownTimer.stop()
         root._lastRegenTimestamp = now
-        if (isAutoTheme) {
+        if (isAutoTheme && !MaterialThemeLoader.defaultApplyExternal) {
+            // KWin port: "auto" means "read the static colors.json"; regenerating is
+            // just re-reading it (switchwall.sh is blocked, see Directories).
+            MaterialThemeLoader.reapplyTheme()
+        } else if (isAutoTheme) {
             // Force full regeneration from wallpaper (includes terminals, GTK, etc)
             const themingPath = Wallpapers.currentThemingWallpaperPath()
             const paletteType = Config.options?.appearance?.palette?.type ?? "auto"
