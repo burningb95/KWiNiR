@@ -28,7 +28,10 @@ Singleton {
         || copyProc.running || extractProc.running || compressProc.running
 
     // Single reusable preview file — never spams new images
-    readonly property string previewFile: "/tmp/inir-gowall-preview"
+    // KWin port (security): was a fixed name in world-writable /tmp. The per-user
+    // runtime dir is 0700, so no other account can pre-create or swap these paths.
+    readonly property string _privateDir: `${Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/" + (Quickshell.env("UID") || "1000")}/kwinir-gowall`
+    readonly property string previewFile: `${_privateDir}/preview`
     readonly property string previewUrl: _previewReady ? `file://${_currentPreviewPath}?rev=${previewRevision}` : ""
 
     // --- Internal state ---
@@ -49,7 +52,9 @@ Singleton {
     readonly property string _generatedThemePath: Directories.generatedMaterialThemePath
 
     // Shim dir with no-op kitty/xdg-open to prevent gowall from opening image viewers
-    readonly property string _shimDir: "/tmp/inir-gowall-shim"
+    // KWin port (security): this dir is put FIRST on gowall's PATH. In /tmp another
+    // account could create it first and plant binaries gowall would run as us.
+    readonly property string _shimDir: `${_privateDir}/shim`
     readonly property var _gowallEnv: ({
         PATH: `${_shimDir}:${Quickshell.env("PATH") ?? "/usr/bin:/usr/local/bin"}`
     })
@@ -392,7 +397,7 @@ Singleton {
     Process {
         id: ensureDirProc
         property string _nextAction: "operation"
-        command: ["/usr/bin/mkdir", "-p", root._runtimeDir, root._outputDir]
+        command: ["/usr/bin/mkdir", "-p", root._privateDir, root._runtimeDir, root._outputDir]
         onExited: (exitCode) => {
             if (exitCode !== 0) { root.error = "Failed to prepare directories"; return }
             if (_nextAction === "copy") {
