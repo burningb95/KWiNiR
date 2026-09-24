@@ -241,7 +241,7 @@ Singleton {
     Process {
         id: kwinMonitorProc
         running: CompositorService.isKWin
-        command: ["/usr/bin/gdbus", "monitor", "--session", "--dest", "org.kde.KWin",
+        command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "--", "/usr/bin/gdbus", "monitor", "--session", "--dest", "org.kde.KWin",
             "--object-path", "/org/kde/KWin/NightLight"]
         stdout: SplitParser { onRead: line => { if (line.indexOf("'enabled'") >= 0) root._kwinParseEnabled(line) } }
         onExited: if (CompositorService.isKWin) kwinMonitorRestart.restart()

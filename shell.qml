@@ -158,7 +158,9 @@ ShellRoot {
         id: cliphistWatcher
         running: CompositorService.isKWin && Config.ready
             && (Config.options?.clipboard?.historyWatcher ?? true)
-        command: ["/usr/bin/wl-paste", "--watch", "/usr/bin/cliphist", "store"]
+        // setpriv --pdeathsig: dies with the bar even if the bar is killed/crashes
+        // (otherwise orphans kept recording clipboard history after it was turned off).
+        command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "--", "/usr/bin/wl-paste", "--watch", "/usr/bin/cliphist", "store"]
         onExited: (code, status) => {
             if (CompositorService.isKWin && (Config.options?.clipboard?.historyWatcher ?? true)) {
                 console.warn("[Clipboard] cliphist watcher exited (" + code + "), restarting in 5s")

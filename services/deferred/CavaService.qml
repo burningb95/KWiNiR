@@ -316,7 +316,8 @@ Singleton {
     Process {
         id: cavaProc
         running: false
-        command: ["cava", "-p", root.configPath]
+        // KWin port: setpriv --pdeathsig so cava dies with the bar.
+        command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "--", "cava", "-p", root.configPath]
         onRunningChanged: {
             if (!running) {
                 if (root._pendingRestart && root.active) {

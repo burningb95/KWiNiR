@@ -187,7 +187,8 @@ Singleton {
     Process {
         id: monitor
         running: true
-        command: ["gdbus", "monitor", "--session", "--dest", "org.kde.KWin"]
+        // KWin port: setpriv --pdeathsig so the monitor dies with the bar (no orphans after a crash/kill).
+        command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "--", "gdbus", "monitor", "--session", "--dest", "org.kde.KWin"]
         stdout: SplitParser {
             splitMarker: "\n"
             onRead: line => {
