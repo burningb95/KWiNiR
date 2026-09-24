@@ -16,17 +16,36 @@ Not affiliated with the iNiR project.
 - Pill bar with workspace dots (KWin virtual desktops via D-Bus), media, tray, clock,
   notifications as pill toasts
 - Left feature sidebar and right control center (quick toggles, sliders, notifications inbox)
-- Notification server (replaces Plasma's popups; see *Notifications* below)
+- Left sidebar **Widgets** tab: in-sidebar **Edit mode** (drag to reorder, hide, resize
+  normal/tall/fill, add items and blank spacers), a **Quick note** with 5 notes (pin, ‹ ›,
+  Ctrl+Enter to save), and a **Controls card** whose toggles show a tinted plate when on
+- Notification server (replaces Plasma's popups; see *Notifications* below), including
+  **file-transfer progress** (Dolphin copies, downloads) with Pause/Cancel
+- **Night light** drives KWin's own Night Light; right-click the Controls-card toggle for
+  temperature and schedule. The bar's on/off state wins and is re-applied at every start
+- **Game mode**: manual, or automatic whenever a fullscreen window is visible
+  (`gameMode.autoDetect`); can pause chosen KWin effects while on
+- **AI chat** with live model catalogs (Gemini, OpenRouter, OpenCode, Ollama, …); keys stay
+  in the system keyring
+- **Screenshots**: while Spectacle's region selector is up, open sidebars and pill panels
+  step beneath it and give it the keyboard, then return
 - Caffeine through the Wayland idle-inhibit protocol, respected by PowerDevil
 - Pill power menu: lock, logout, reboot, shutdown through Plasma's session manager
 
 Not available: anything needing a window list (KWin exposes no foreign-toplevel protocol
-to Quickshell), per-output workspaces, and Plasma's file-transfer progress.
+to Quickshell) and per-output workspaces.
+
+The KWin-specific parts that Quickshell can't reach directly (fullscreen and screenshot
+detection, file-transfer jobs, focused output) go through a small helper,
+[`helpers/kwinir_bridge.py`](helpers/kwinir_bridge.py), which loads a KWin script at runtime
+and never writes KWin's config. A security and robustness audit of the whole tree is in
+[`AUDIT.md`](AUDIT.md).
 
 ## Deliberately excluded
 
-iNiR's `scripts/` directory is not included (only two read-only keyring lookups under
-`scripts/keyring/`, for AI-provider keys). Its wallpaper/color generation and everything that
+iNiR's `scripts/` directory is not included, apart from two read-only keyring lookups under
+`scripts/keyring/` and the AI model-catalog fetcher `scripts/ai/discover-provider-models.py`
+(keys reach it through the environment, never argv). Its wallpaper/color generation and everything that
 rewrites terminal, GTK/Qt, icon or other apps' themes is also **blocked in code**, not just
 missing: `Directories.wallpaperSwitchScriptPath` points at a blocked path and
 `MaterialThemeLoader.defaultApplyExternal` is hard-wired `false`. The matching settings
@@ -97,6 +116,7 @@ editor or a script. Missing keys fall back to the defaults in
 | Bar › *Open Ricelin Pill settings* | hover-row **order** (drag between groups; eye = hide), surfaces, clipboard history, **candy icons**, size, clock, glyphs |
 | Bar › Behavior & clock | auto-hide, **peek** duration |
 | Sidebars | **size** of each sidebar, section / tab / **widget order** (tap to lift, tap to place), layout default/compact, avatar, **shown quick toggles** |
+| Interface › Widgets | left sidebar widgets, *Sizes & spacing*, Controls-card toggles |
 | Themes › Colors | **My palettes** (files in `extras/theme/`) above iNiR's presets |
 | Quick › Game mode | which **KWin effects** game mode pauses (never written to kwinrc) |
 | Panels › Notifications | popup timings per urgency, max popup time |
@@ -116,7 +136,11 @@ Every page has **Reset** at the bottom (click twice): *my setup* restores
 | `appearance.userPalette` | `"plum"` | which `extras/theme/colors.<name>.json` is live |
 | `clipboard.historyWatcher` | `true` | run `wl-paste --watch cliphist store` with the bar |
 | `gameMode.kwinEffects` | 12 animation effects | unloaded while game mode is on (with `disableEffects`) |
+| `notifications.jobProgress` | `true` | file-transfer progress notifications (bridge helper) |
 | `sidebar.quickToggles.hiddenTypes` | `["cloudflareWarp"]` | toggles hidden in both styles |
+| `sidebar.widgets.itemSizes` | `[]` | left Widgets tab heights, `"id=normal\|tall\|fill"` |
+| `sidebar.widgets.spacers` | `[]` | blank spacers, `"spacer-N=<px>"`, placed via `widgetOrder` |
+| `sidebar.widgets.controlsCard.{showEasyEffects,showCaffeine}` | `true`, `true` | extra Controls-card toggles |
 | `sidebar.right.avatarPath` | `""` | bar-only avatar; `""` = `~/.config/pillbar/avatar.*` |
 
 ### Adding a configurable option
