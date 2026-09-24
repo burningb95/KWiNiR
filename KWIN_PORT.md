@@ -492,3 +492,16 @@ Process note: these six files were edited directly in the live tree instead of s
 (should have gone through `staging/pillbar/` + `test-staging.sh` per the normal workflow) —
 low-risk, icon-only changes using an already-proven `IconImage`/`Quickshell.iconPath` pattern,
 but staging has since been synced to match so the trees don't drift.
+
+## Glance header volume control hidden (2026-09-24)
+
+He doesn't want the volume button on the left sidebar's glance header at all — icon, percent
+number, and scroll-to-adjust. Config-only: `sidebar.widgets.glance.showVolume` was already a
+flag (`widgets/GlanceHeader.qml:149`, gates the whole `Item` at line 145 including its
+`MouseArea onWheel` scroll handler), so no QML touched — set it `false` in
+`~/.config/pillbar/config.json` and restarted. Backup:
+`backups/config-before-hide-glance-volume-<ts>.json` in the bar repo. Undo: flip back to
+`true` and restart. The GameMode and DND indicators next to it (`showGameMode`, `showDnd`)
+are untouched. The "Scroll to adjust volume" tooltip fix from earlier today
+(`visible: root.volumeMuted`) is now dead code while this is off, but harmless — it's correct
+again if volume is ever turned back on.
