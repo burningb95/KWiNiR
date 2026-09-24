@@ -37,6 +37,16 @@ Item {
 
     implicitHeight: Math.max(iconTile.height, col.implicitHeight)
 
+    /** KWin port: freedesktop body markup -> plain text (tags dropped, entities decoded). */
+    function plainBody(text): string {
+        return String(text ?? "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]*>/g, "")
+            .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+            .replace(/&quot;/g, "\"").replace(/&(apos|#39);/g, "'")
+            .replace(/&amp;/g, "&")
+    }
+
     /**
      * Deadline is snapshotted once: binding the interval to PillNotifs.expireAt
      * restarts the timer (and drifts the lifetime) every time an unrelated
@@ -172,6 +182,10 @@ Item {
 
             Text {
                 width: parent.width - (root.critical ? 13 * root.s : 0)
+                // KWin port (security): the summary is plain text per the spec. The
+                // default AutoText rendered anything HTML-looking as rich text, so a
+                // notification (e.g. a website's) could make the bar fetch remote images.
+                textFormat: Text.PlainText
                 text: root.notif.summary
                 color: PillTheme.cream
                 font.family: PillTheme.font
@@ -185,7 +199,9 @@ Item {
         Text {
             width: parent.width
             visible: !root.compact && root.notif.body.length > 0
-            text: root.notif.body
+            // KWin port: bodies may carry freedesktop markup; show it as plain text
+            // rather than printing tags and entities (&amp;) literally.
+            text: root.plainBody(root.notif.body)
             color: PillTheme.dim
             font.family: PillTheme.font
             font.pixelSize: 10.5 * root.s
