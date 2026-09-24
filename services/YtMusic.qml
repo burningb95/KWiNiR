@@ -103,7 +103,10 @@ Singleton {
     
     property string audioQuality: Config.options?.sidebar?.ytmusic?.audioQuality ?? "best"
     onAudioQualityChanged: {
-        Config.setNestedValue('sidebar.ytmusic.audioQuality', audioQuality)
+        // KWin port: only write when it differs — the binding above fires on every start,
+        // and writing back the value it just read rewrote config.json on each launch.
+        if ((Config.options?.sidebar?.ytmusic?.audioQuality ?? "best") !== audioQuality)
+            Config.setNestedValue('sidebar.ytmusic.audioQuality', audioQuality)
         // Apply the new quality to what's playing NOW (mpv's --ytdl-format is fixed at launch),
         // so the Settings control visibly correlates instead of only affecting the next track.
         if (root.currentVideoId !== "") root._reloadCurrentTrack()
