@@ -3625,6 +3625,10 @@ Singleton {
                     property bool contextShowWeather: true
                     // Widget order (drag to reorder)
                     property list<string> widgetOrder: ["context", "week", "media", "note", "launch", "controls", "status", "crypto", "wallpaper", "worldclock"]
+                    // KWin port: per-item height ("id=normal|tall|fill") and blank spacers
+                    // ("spacer-N=<px>", placed via widgetOrder like any item).
+                    property list<string> itemSizes: []
+                    property list<string> spacers: []
                     // Spacing between widgets (px)
                     property int spacing: 8
 

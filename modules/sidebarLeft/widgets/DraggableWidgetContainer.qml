@@ -37,6 +37,45 @@ Item {
     readonly property bool showWallpaper: Config.options?.sidebar?.widgets?.wallpaper ?? false
     readonly property bool showWorldClock: Config.options?.sidebar?.widgets?.worldClock ?? true
 
+    // ─── KWin port: per-item sizes and blank spacers ─────────────────────
+    // sidebar.widgets.itemSizes: "id=normal|tall|fill"; sidebar.widgets.spacers:
+    // "spacer-N=<px>" (spacers are placed through widgetOrder like any item).
+    // tall = 1.5x natural height; fill = shares whatever height the tab has left
+    // (never less than natural; if nothing is left the tab just scrolls as before).
+    function _parsePairs(list): var {
+        const out = ({})
+        for (const entry of Array.from(list ?? [])) {
+            const s = String(entry), i = s.indexOf("=")
+            if (i > 0) out[s.slice(0, i)] = s.slice(i + 1)
+        }
+        return out
+    }
+    readonly property var sizeMap: _parsePairs(Config.options?.sidebar?.widgets?.itemSizes)
+    readonly property var spacerMap: {
+        const raw = _parsePairs(Config.options?.sidebar?.widgets?.spacers)
+        const out = ({})
+        for (const id in raw) {
+            const px = Number(raw[id])
+            if (id.startsWith("spacer-") && px > 0) out[id] = Math.min(600, px)
+        }
+        return out
+    }
+    // Height the item column may use (set by WidgetsView); <= 0 disables fill.
+    property real availableHeight: -1
+    readonly property real fillShare: {
+        if (root.availableHeight <= 0) return 0
+        let fixed = 0, fills = 0, shown = 0
+        for (let i = 0; i < repeater.count; i++) {
+            const it = repeater.itemAt(i)
+            if (!it || it.naturalHeight <= 0) continue
+            shown++
+            if (it.sizeMode === "fill") fills++
+            else fixed += it.fixedHeight
+        }
+        if (fills === 0) return 0
+        return Math.max(0, (root.availableHeight - fixed - Math.max(0, shown - 1) * root.widgetSpacing) / fills)
+    }
+
     readonly property var visibleWidgets: {
         const order = widgetOrder ?? defaultOrder
         return order.filter(id => {
@@ -51,7 +90,7 @@ Item {
             case "crypto": return showCrypto
             case "wallpaper": return showWallpaper
             case "worldclock": return showWorldClock
-            default: return false
+            default: return String(id).startsWith("spacer-") && (id in root.spacerMap)
             }
         })
     }
@@ -198,7 +237,15 @@ Item {
                 required property int index
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: contentLoader.item?.implicitHeight ?? 0
+                // KWin port: size from sidebar.widgets.itemSizes / spacers (see top of file)
+                readonly property bool isSpacer: modelData.startsWith("spacer-")
+                readonly property string sizeMode: isSpacer ? "normal" : (root.sizeMap[modelData] ?? "normal")
+                readonly property real naturalHeight: isSpacer ? (root.spacerMap[modelData] ?? 0)
+                    : (contentLoader.item?.implicitHeight ?? 0)
+                readonly property real fixedHeight: sizeMode === "tall" ? Math.round(naturalHeight * 1.5) : naturalHeight
+                Layout.preferredHeight: naturalHeight <= 0 ? 0
+                    : sizeMode === "fill" ? Math.max(naturalHeight, Math.floor(root.fillShare))
+                    : fixedHeight
                 Layout.leftMargin: needsMargin ? 12 : 0
                 Layout.rightMargin: needsMargin ? 12 : 0
                 visible: Layout.preferredHeight > 0
@@ -348,6 +395,13 @@ Item {
                     Loader {
                         id: contentLoader
                         width: parent.width
+                        // KWin port: items that can use extra height (quick note, spacers) stretch to
+                        // their tall/fill slot; the rest keep their natural height, centred in it.
+                        // Always an explicit binding: resetting to undefined after "tall" kept the old
+                        // height and overlapped the next item.
+                        readonly property bool stretches: widgetWrapper.isSpacer || widgetWrapper.modelData === "note"
+                        height: stretches ? widgetWrapper.Layout.preferredHeight : widgetWrapper.naturalHeight
+                        y: stretches ? 0 : Math.max(0, Math.round((widgetWrapper.Layout.preferredHeight - height) / 2))
 
                         // Visual feedback when dragging
                         scale: widgetWrapper.isBeingDragged ? 1.02 : 1
@@ -375,7 +429,7 @@ Item {
                             case "crypto": return cryptoWidget
                             case "wallpaper": return wallpaperWidget
                             case "worldclock": return worldClockWidget
-                            default: return null
+                            default: return widgetWrapper.isSpacer ? spacerWidget : null
                             }
                         }
                     }
@@ -631,5 +685,28 @@ Item {
     Component {
         id: worldClockWidget
         WorldClockWidget {}
+    }
+    // KWin port: blank spacer — invisible, except a faint outline while rearranging so it
+    // can be found and dragged. Its height comes from the wrapper (sidebar.widgets.spacers).
+    Component {
+        id: spacerWidget
+        Item {
+            implicitHeight: 0
+            Rectangle {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                radius: Appearance.rounding.small
+                color: "transparent"
+                border.width: 1
+                border.color: Appearance.colors.colOutlineVariant
+                opacity: root.editMode ? 0.8 : 0
+                visible: opacity > 0
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration; easing.type: Appearance.animation.elementMoveFast.type; easing.bezierCurve: Appearance.animation.elementMoveFast.bezierCurve }
+                }
+            }
+        }
     }
 }

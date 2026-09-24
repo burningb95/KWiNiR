@@ -115,6 +115,8 @@ Item {
                 id: widgetContainer
                 Layout.fillWidth: true
                 animateIn: root.animateIn
+                // KWin port: room left under the header, for items sized "fill"
+                availableHeight: flickable.height - glanceHeader.height - glanceHeader.Layout.bottomMargin - 12
             }
 
             Item { Layout.preferredHeight: 12 }

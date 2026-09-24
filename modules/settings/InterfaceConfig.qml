@@ -1126,6 +1126,134 @@ ContentPage {
                 }
             }
 
+            // KWin port: per-item sizes and blank spacers for the left sidebar's Widgets tab
+            // (sidebar.widgets.itemSizes / spacers; read by DraggableWidgetContainer).
+            ContentSubsection {
+                id: widgetSizesSection
+                title: Translation.tr("Sizes & spacing")
+                tooltip: Translation.tr("Tall = 1.5x its normal height. Fill = shares the space left at the bottom of the sidebar. Spacers are blank gaps you drag like any widget.")
+
+                readonly property var labels: ({
+                    media: Translation.tr("Media player"), week: Translation.tr("Week strip"),
+                    context: Translation.tr("Context card"), note: Translation.tr("Quick note"),
+                    launch: Translation.tr("Quick launch"), controls: Translation.tr("Controls"),
+                    status: Translation.tr("Status rings"), crypto: Translation.tr("Crypto"),
+                    wallpaper: Translation.tr("Wallpapers"), worldclock: Translation.tr("World clock")
+                })
+                readonly property var enabledFlags: ({
+                    media: "media", week: "week", context: "context", note: "note", launch: "launch",
+                    controls: "controls", status: "status", crypto: "crypto", wallpaper: "wallpaper",
+                    worldclock: "worldClock"
+                })
+                // Enabled items in their current order
+                readonly property var items: {
+                    const w = Config.options?.sidebar?.widgets
+                    const order = Array.from(w?.widgetOrder ?? [])
+                    return order.filter(id => (id in labels) && (w?.[enabledFlags[id]] ?? false))
+                }
+                function pairs(list) {
+                    const out = []
+                    for (const e of Array.from(list ?? [])) {
+                        const str = String(e), i = str.indexOf("=")
+                        if (i > 0) out.push({ id: str.slice(0, i), value: str.slice(i + 1) })
+                    }
+                    return out
+                }
+                readonly property var spacerList: pairs(Config.options?.sidebar?.widgets?.spacers)
+                function sizeOf(id) {
+                    const hit = pairs(Config.options?.sidebar?.widgets?.itemSizes).find(p => p.id === id)
+                    return hit ? hit.value : "normal"
+                }
+                function setSize(id, size) {
+                    if (sizeOf(id) === size) return
+                    const rest = pairs(Config.options?.sidebar?.widgets?.itemSizes).filter(p => p.id !== id)
+                    if (size !== "normal") rest.push({ id: id, value: size })
+                    Config.setNestedValue("sidebar.widgets.itemSizes", rest.map(p => p.id + "=" + p.value))
+                }
+                function setSpacerHeight(id, px) {
+                    const list = spacerList
+                    const hit = list.find(p => p.id === id)
+                    if (!hit || Number(hit.value) === px) return
+                    Config.setNestedValue("sidebar.widgets.spacers",
+                        list.map(p => p.id + "=" + (p.id === id ? px : p.value)))
+                }
+                function addSpacer() {
+                    let n = 1
+                    while (spacerList.some(p => p.id === "spacer-" + n)) n++
+                    const id = "spacer-" + n
+                    Config.setNestedValue("sidebar.widgets.spacers", spacerList.map(p => p.id + "=" + p.value).concat([id + "=24"]))
+                    const order = Array.from(Config.options?.sidebar?.widgets?.widgetOrder ?? [])
+                    if (!order.includes(id))
+                        Config.setNestedValue("sidebar.widgets.widgetOrder", order.concat([id]))
+                }
+                function removeSpacer(id) {
+                    Config.setNestedValue("sidebar.widgets.spacers",
+                        spacerList.filter(p => p.id !== id).map(p => p.id + "=" + p.value))
+                    Config.setNestedValue("sidebar.widgets.widgetOrder",
+                        Array.from(Config.options?.sidebar?.widgets?.widgetOrder ?? []).filter(x => x !== id))
+                }
+
+                Repeater {
+                    model: widgetSizesSection.items
+                    delegate: ColumnLayout {
+                        required property string modelData
+                        Layout.fillWidth: true
+                        spacing: 2
+                        StyledText {
+                            text: widgetSizesSection.labels[modelData] ?? modelData
+                            color: Appearance.colors.colSubtext
+                        }
+                        ConfigSelectionArray {
+                            Layout.fillWidth: true
+                            enableSettingsSearch: false
+                            options: [
+                                { displayName: Translation.tr("Normal"), icon: "check_indeterminate_small", value: "normal" },
+                                { displayName: Translation.tr("Tall"), icon: "expand", value: "tall" },
+                                { displayName: Translation.tr("Fill"), icon: "height", value: "fill" }
+                            ]
+                            currentValue: widgetSizesSection.sizeOf(modelData)
+                            onSelected: newValue => widgetSizesSection.setSize(modelData, newValue)
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: widgetSizesSection.spacerList
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        ConfigSpinBox {
+                            Layout.fillWidth: true
+                            enableSettingsSearch: false
+                            icon: "height"
+                            text: Translation.tr("Spacer %1 height (px)").arg(modelData.id.replace("spacer-", ""))
+                            value: Number(modelData.value) || 24
+                            from: 4
+                            to: 400
+                            stepSize: 4
+                            onValueChanged: widgetSizesSection.setSpacerHeight(modelData.id, value)
+                        }
+                        RippleButtonWithIcon {
+                            materialIcon: "delete"
+                            mainText: Translation.tr("Remove")
+                            onClicked: widgetSizesSection.removeSpacer(modelData.id)
+                        }
+                    }
+                }
+
+                RippleButtonWithIcon {
+                    materialIcon: "add"
+                    mainText: Translation.tr("Add spacer")
+                    onClicked: widgetSizesSection.addSpacer()
+                }
+
+                NoticeBox {
+                    Layout.fillWidth: true
+                    materialIcon: "info"
+                    text: Translation.tr("New spacers start at the bottom. Hold click in the sidebar to drag them where you want; they show as a faint outline while you rearrange.")
+                }
+            }
+
             ContentSubsection {
                 id: cryptoSection
                 title: Translation.tr("Crypto Widget")

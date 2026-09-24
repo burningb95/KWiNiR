@@ -92,6 +92,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(120, Math.max(60, textArea.implicitHeight + 12))
+                Layout.fillHeight: true // KWin port: grow into extra height when sized tall/fill
                 radius: Appearance.inirEverywhere ? Appearance.inir.roundingSmall : Appearance.rounding.small
                 color: Appearance.inirEverywhere 
                     ? (root.editing ? Appearance.inir.colLayer2Hover : Appearance.inir.colLayer2)
