@@ -28,6 +28,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: Math.round(root.scrollX)
         text: root.text
+        textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
         color: root.color
         renderType: Text.NativeRendering
         font.family: PillTheme.font

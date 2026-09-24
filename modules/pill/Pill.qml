@@ -705,6 +705,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 Text {
                     text: MprisController.activePlayer?.trackTitle ?? ""
+                    textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                     color: PillTheme.cream
                     font.family: PillTheme.font
                     font.pixelSize: 12.5 * pill.s
@@ -715,6 +716,7 @@ Item {
                 Text {
                     text: PillTheme.joinArtists(MprisController.activePlayer?.trackArtists,
                                                 MprisController.activePlayer?.trackArtist)
+                    textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                     color: PillTheme.dim
                     font.family: PillTheme.font
                     font.pixelSize: 10.5 * pill.s
@@ -1282,6 +1284,7 @@ Item {
                             text: pill.mediaVolumeFeedback >= 0
                                 ? Math.round(pill.mediaVolumeFeedback * 100) + "%"
                                 : (MprisController.activePlayer?.trackTitle ?? Translation.tr("Media"))
+                            textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                             color: pill.mediaVolumeFeedback >= 0 ? PillTheme.cream : PillTheme.subtle
                             font.family: PillTheme.font
                             font.pixelSize: 12.5 * pill.s

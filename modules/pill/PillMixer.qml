@@ -375,6 +375,7 @@ PillSurface {
                         anchors.rightMargin: 9 * root.s
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.deviceLabel(devRow.modelData)
+                        textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                         elide: Text.ElideRight
                         color: devRow.current ? PillTheme.cream : PillTheme.subtle
                         font.family: PillTheme.font
@@ -535,6 +536,7 @@ PillSurface {
                 width: parent.width - 10 * root.s
                 horizontalAlignment: Text.AlignHCenter
                 text: root.deviceLabel(root.sink)
+                textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                 color: PillTheme.faint
                 font.family: PillTheme.font
                 font.pixelSize: 10.5 * root.s

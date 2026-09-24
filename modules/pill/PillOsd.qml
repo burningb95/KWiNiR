@@ -521,6 +521,7 @@ Item {
             Text {
                 width: parent.width
                 text: root.subjectHas ? root.subjectTitle : "Nothing playing"
+                textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                 color: PillTheme.cream
                 font.family: PillTheme.font
                 font.pixelSize: (root.compact ? 9.5 : 14) * root.s
@@ -532,6 +533,7 @@ Item {
             Text {
                 width: parent.width
                 text: root.subjectArtist
+                textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                 color: PillTheme.dim
                 font.family: PillTheme.font
                 font.pixelSize: 11 * root.s

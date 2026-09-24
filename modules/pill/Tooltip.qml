@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import qs.modules.common
+import qs.modules.common.functions
 
 /**
  * Washi hint bubble for pill controls. Anchored to its parent control and
@@ -88,7 +89,7 @@ Item {
         Text {
             id: titleText
             anchors.horizontalCenter: parent.horizontalCenter
-            text: root.title
+            text: NotificationUtils.stripRemoteImages(root.title) // KWin port: tray/app text may carry markup; never remote <img>
             color: PillTheme.cream
             font.family: PillTheme.font
             font.pixelSize: 12 * root.s
@@ -98,7 +99,7 @@ Item {
             id: descText
             anchors.horizontalCenter: parent.horizontalCenter
             visible: root.desc.length > 0
-            text: root.desc
+            text: NotificationUtils.stripRemoteImages(root.desc)
             color: PillTheme.subtle
             font.family: PillTheme.font
             font.pixelSize: 11 * root.s

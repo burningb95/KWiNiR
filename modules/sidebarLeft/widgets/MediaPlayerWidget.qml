@@ -233,6 +233,7 @@ Item {
                 StyledText {
                     Layout.fillWidth: true
                     text: StringUtils.cleanMusicTitle(root.effectiveTitle) || "—"
+                    textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                     font.family: (Appearance.editorialEverywhere || Appearance.zzzEverywhere)
                         ? Appearance.font.family.title : Appearance.font.family.main
                     font.pixelSize: Appearance.editorialEverywhere ? Appearance.font.pixelSize.large * Appearance.editorial.titleScale : Appearance.font.pixelSize.normal
@@ -249,6 +250,7 @@ Item {
                 StyledText {
                     Layout.fillWidth: true
                     text: root.effectiveArtist || ""
+                    textFormat: Text.PlainText // KWin port: media/device names are outside data; plain text never loads remote <img>
                     font.family: Appearance.font.family.main
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: Font.Medium
