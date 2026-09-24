@@ -26,13 +26,36 @@ function fullscreenVisible() {
     var windows = workspace.windowList();
     for (var i = 0; i < windows.length; i++) {
         var w = windows[i];
-        if (w && w.normalWindow && w.fullScreen && !w.minimized && onCurrentDesktop(w))
+        // Spectacle's region selector is fullscreen too; that's "capture", not a game.
+        if (w && w.normalWindow && w.fullScreen && !w.minimized && onCurrentDesktop(w)
+                && w.resourceClass !== "org.kde.spectacle")
+            return true;
+    }
+    return false;
+}
+
+// Spectacle's region selector (screenshots and region recording) is one
+// fullscreen window per output. While it is up, the bar lowers its Overlay
+// surfaces (open sidebars, pill panels) beneath it and drops keyboard focus.
+var lastCapture = null;
+
+function captureActive() {
+    var windows = workspace.windowList();
+    for (var i = 0; i < windows.length; i++) {
+        var w = windows[i];
+        if (w && w.resourceClass === "org.kde.spectacle" && w.fullScreen && !w.minimized)
             return true;
     }
     return false;
 }
 
 function report() {
+    var capture = captureActive();
+    if (capture !== lastCapture) {
+        lastCapture = capture;
+        callDBus("org.kwinir.Bridge", "/Bridge", "org.kwinir.Bridge", "Event",
+                 JSON.stringify({ type: "capture", value: capture }));
+    }
     var value = fullscreenVisible();
     if (value === last)
         return;

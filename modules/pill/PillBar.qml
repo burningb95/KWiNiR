@@ -390,10 +390,12 @@ Scope {
             // Match Dock, classic and M3 stacking for the persistent/resting
             // bar. Explicit surfaces and transient feedback still need Overlay
             // semantics so they can intentionally appear over fullscreen.
-            readonly property bool overlayPresentation: modal
-                || pill.mode === "osd" || pill.mode === "toast"
+            // KWin port: never above Spectacle's region selector (KWinBridge.capture),
+            // and leave it the keyboard.
+            readonly property bool overlayPresentation: !KWinBridge.capture && (modal
+                || pill.mode === "osd" || pill.mode === "toast")
             WlrLayershell.layer: overlayPresentation ? WlrLayer.Overlay : WlrLayer.Top
-            WlrLayershell.keyboardFocus: surfaceOpen || pill.held
+            WlrLayershell.keyboardFocus: !KWinBridge.capture && (surfaceOpen || pill.held)
                 ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             WlrLayershell.namespace: "inir-pill"
 

@@ -23,6 +23,7 @@ freedesktop notification, updated in place (replaces_id), carrying the integer
   so "unchanged since the last report" doesn't mean the bar has it).
 
 stdout events: {"type":"ready"}  {"type":"fullscreen","value":bool}
+               {"type":"capture","value":bool}  (Spectacle region selector up)
                {"type":"jobs","count":int}
                {"type":"output","value":str}  {"type":"overview","value":bool}
 """
@@ -423,6 +424,7 @@ class Bridge:
     def _on_kwin_vanished(self, *_args):
         if self.kwin_present:
             emit({"type": "fullscreen", "value": False})
+            emit({"type": "capture", "value": False})
         self.kwin_present = False
         self.script_loaded = False
         self.last_output = None
@@ -474,7 +476,11 @@ class Bridge:
             if script_id < 0:
                 log("KWin refused the fullscreen script")
                 return
-            self._kwin(f"/Scripting/Script{script_id}", "org.kde.kwin.Script", "run", None, None, None)
+            # Not /Scripting/Script<id>.run: KWin numbers a new script by the current
+            # script count, so after any unload the id can equal a live script's and
+            # its D-Bus path is already taken — run() then hits that other script and
+            # ours never starts. Scripting.start() runs every loaded, stopped script.
+            self._kwin("/Scripting", "org.kde.kwin.Scripting", "start", None, None, None)
             self.script_loaded = True
         except GLib.Error as e:
             log(f"could not load the KWin script: {e.message}")
@@ -496,9 +502,9 @@ class Bridge:
             event = json.loads(params.unpack()[0])
         except (ValueError, TypeError):
             event = None
-        # Only the one whitelisted event reaches the bar, rebuilt from checked fields.
-        if isinstance(event, dict) and event.get("type") == "fullscreen" and isinstance(event.get("value"), bool):
-            emit({"type": "fullscreen", "value": event["value"]})
+        # Only whitelisted events reach the bar, rebuilt from checked fields.
+        if isinstance(event, dict) and event.get("type") in ("fullscreen", "capture") and isinstance(event.get("value"), bool):
+            emit({"type": event["type"], "value": event["value"]})
         invocation.return_value(None)
 
     # -- job view server ------------------------------------------------------

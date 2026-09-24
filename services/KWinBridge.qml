@@ -11,6 +11,8 @@ import qs.services
  * the bar what KWin can't hand Quickshell directly:
  *   - fullscreen: whether a fullscreen window is visible (game mode auto-detect),
  *     reported by a KWin script the helper loads at runtime;
+ *   - capture: Spectacle's region selector is up (same script) — Overlay
+ *     surfaces step beneath it;
  *   - file-transfer progress: it owns org.kde.JobViewServer and shows KIO jobs
  *     (Dolphin copies, downloads) as progress notifications
  *     (notifications.jobProgress, default on);
@@ -27,6 +29,7 @@ Singleton {
     readonly property bool jobProgress: Config.options?.notifications?.jobProgress ?? true
     property bool ready: false
     property bool fullscreen: false
+    property bool capture: false
     property int activeJobs: 0
     property string activeOutput: ""
     property bool overview: false
@@ -55,6 +58,7 @@ Singleton {
         switch (event.type) {
         case "ready": root.ready = true; break
         case "fullscreen": root.fullscreen = event.value === true; break
+        case "capture": root.capture = event.value === true; break
         case "jobs": root.activeJobs = Math.max(0, Number(event.count) || 0); break
         case "output": root.activeOutput = String(event.value ?? ""); root.outputPolled(root.activeOutput); break
         case "overview": root.overview = event.value === true; root.overviewPolled(root.overview); break
@@ -70,6 +74,7 @@ Singleton {
         onExited: (code, status) => {
             root.ready = false
             root.fullscreen = false
+            root.capture = false
             root.activeJobs = 0
             root.activeOutput = ""
             root.overview = false

@@ -512,3 +512,23 @@ flag (`widgets/GlanceHeader.qml:149`, gates the whole `Item` at line 145 includi
 are untouched. The "Scroll to adjust volume" tooltip fix from earlier today
 (`visible: root.volumeMuted`) is now dead code while this is off, but harmless — it's correct
 again if volume is ever turned back on.
+
+## Screenshots: bar panels step beneath Spectacle (2026-09-24)
+
+An open sidebar (or pill panel/toast) is a layer-shell **Overlay** surface, which KWin
+stacks above everything — including Spectacle's region selector (KWin's fullscreen/active
+layer), so the selection box was drawn *behind* an open sidebar. The KWin script
+`helpers/kwinir-fullscreen.js` now also reports `capture` (a fullscreen `org.kde.spectacle`
+window exists); `kwinir_bridge.py` whitelists it; `KWinBridge.capture` drives
+`SidebarHost` (layer Overlay → Top, keyboard focus None) and `PillBar` (no Overlay
+presentation, no keyboard focus). They return when the selector closes; the frozen snapshot
+still contains the sidebar, so it can be snipped. Spectacle is excluded from `fullscreen`
+(it isn't a game). Quickshell only re-layers the *open* sidebar; a closed one stays on
+Overlay but is invisible with an empty input region.
+
+**The bridge script had not been running.** `load_script` ran it via
+`/Scripting/Script<id>.run`, but KWin numbers a new script by the current script count, so
+after any unload the id can equal a still-loaded script's and the new script's D-Bus path is
+never registered — `run()` reached the other script and ours never started (fullscreen
+auto-detect for game mode was dead too). It now calls `Scripting.start()`, which runs every
+loaded, stopped script.

@@ -589,8 +589,11 @@ Scope {
         implicitWidth: Math.ceil(root.effectiveSidebarWidth)
         WlrLayershell.namespace: root.isLeftEdge
             ? "quickshell:sidebarLeft" : "quickshell:sidebarRight"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: ShellEditSession.active
+        // KWin port: while Spectacle's region selector is up, step beneath it
+        // (Top sits under KWin's fullscreen/active layer) and let it have the
+        // keyboard, so the selection box isn't drawn behind an open sidebar.
+        WlrLayershell.layer: KWinBridge.capture ? WlrLayer.Top : WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: ShellEditSession.active || KWinBridge.capture
             || !root.roleOpen || root.roleHoldOpen
             ? WlrKeyboardFocus.None
             : root.otherRoleOpen ? WlrKeyboardFocus.OnDemand
