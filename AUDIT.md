@@ -1,7 +1,7 @@
 # KWiNiR audit (branch `audit`)
 
 Full review pass for bugs, efficiency and security, following burningb95's audit prompt
-(verbatim copy outside the repo: `~/.local/share/Fancy-Floating-Bar/audit-prompt.md`).
+(verbatim copy outside the repo: `~/.local/share/Fancy-Floating-Bar/docs/audit-prompt.md`).
 
 **Rules in force:** fix clear bugs/warnings, performance changes that are invisible, and
 security fixes that keep features — one commit per fix. Anything visual, behavioural,
@@ -16,8 +16,9 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-**Audit complete (2026-09-24).** Waiting on burningb95: review the branch, decide the
-*Needs approval* items, then merge or roll back (instructions at the end of *Summary*).
+**Audit complete and merged into `main` (2026-09-24 10:03, pushed).** Only the *Needs approval*
+table remains for burningb95 to decide. (The merge/rollback commands below predate the merge:
+rolling back now means `git revert` of the audit commits.)
 
 ## Summary (phase 5)
 

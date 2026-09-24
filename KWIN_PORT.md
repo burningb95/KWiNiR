@@ -426,3 +426,32 @@ and restored afterwards (identical):
 
 Not driven: clicks/drags themselves (can't click from a session) — see CLAUDE.md
 *Needs Camron*. YT Music is dropped.
+
+## Left sidebar UI (2026-09-24)
+
+All in `modules/sidebarLeft/`; the Widgets tab is `WidgetsView.qml` (header + scroll) →
+`widgets/DraggableWidgetContainer.qml` (the item list: order, sizes, spacers, edit mode).
+
+| Feature | Where | Config (`sidebar.widgets.*` unless noted) |
+|---|---|---|
+| Item order / visibility | `DraggableWidgetContainer` | `widgetOrder`, one bool per item (`media`, `week`, `context` = weather, `note`, `launch`, `controls`, `status`, `crypto`, `wallpaper`, `worldClock`) |
+| Sizes Normal/Tall/Fill | same | `itemSizes: ["id=tall"…]` — tall 1.5×, fill shares leftover height; only Quick note (and spacers) stretch, others are centred in their slot |
+| Blank spacers | same | `spacers: ["spacer-N=<px>"]`, placed via `widgetOrder` |
+| **Edit mode** (Edit/Done under the items) | same, `arranging` | writes the keys above; ✕ hides, size chip cycles, drag anywhere, Add tray |
+| Settings UI for the above | `modules/settings/InterfaceConfig.qml` › Widgets › *Sizes & spacing* | — |
+| Controls card (toggles | actions) | `widgets/ControlsCard.qml` | `controlsCard.show*` (EasyEffects, Caffeine added; Network/Bluetooth hidden by him) |
+| Quick note: 5 notes, pin, ‹ ›, fresh note on open, Ctrl+Enter | `widgets/QuickNote.qml` | own store `~/.local/state/quickshell/user/quicknotes.json` (not the Notepad service) |
+| Fast wheel scrolling | `WidgetsView.qml` + iNiR `StyledFlickable`/`StyledListView` | `interactions.scrolling.fasterTouchpadScroll: true`, `mouseScrollFactor` 120 |
+
+Traps hit building these (all fixed):
+- **z only orders siblings.** Controls inside a child container can't rise above a sibling
+  overlay (the edit drag layer, z 15) — put clickable controls on the same level as the overlay.
+  `childAt()` walks declaration order and ignores z, so it's only a valid probe when both agree.
+- **A `Flow` sized by the layout only while visible** + a child with `width: parent.width`
+  relaid out forever when hidden → the sidebar hung (100 % CPU, never presented, IPC dead).
+  Give such children an explicit width.
+- **Button base types have FINAL `icon` (and `highlighted`)** — custom props on RippleButton
+  must use other names (`glyph`, `lit`), or the component fails to load.
+- A Loader's `height: undefined` after an explicit height didn't reset → overlap. Bind always.
+- Settings controls write on init (`onCheckedChanged`); Config skips equal plain values, and
+  list writes must compare first (see `InterfaceConfig` *Sizes & spacing*).
