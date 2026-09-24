@@ -16,9 +16,9 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 4, remaining: (5) network —
-HTTPS-only (ip-api.com is plain HTTP: Weather.qml:866), timeouts, failure handling;
-(6) temp files — #1, #2.
+Phase 5 (wrap-up): run the live bar and confirm zero new warnings; write the summary
+(fixed, numbers, Needs approval with recommendations, not verified); final commit;
+merge/rollback instructions.
 
 ## Plan
 
@@ -127,6 +127,7 @@ modules is gated on its surface being open (sidebar/pill popups) or on a feature
 | Area | Status |
 |---|---|
 | shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children, IPC) |
+| phase 4 security: shell strings, rich text, IPC, secrets, network, temp files | reviewed / fixed |
 | phase 3 efficiency: timers, spawns, closed-sidebar work, images | reviewed / fixed |
 | phase 2 robustness: Battery, BluetoothStatus, Audio, MprisController, Network, KWinService, Hyprsunset, Config | reviewed / fixed |
 | modules/common (Config, Appearance, Directories, Persistent, functions) | todo |
@@ -151,8 +152,8 @@ needs approval.
 
 | # | Sev | Where | Finding | Status |
 |---|---|---|---|---|
-| 1 | M | services/Ai.qml:959, services/ai/GeminiApiStrategy.qml:238 | AI request script and upload temp files at fixed `/tmp/quickshell/ai/*` paths; the request script is executed | open |
-| 2 | L | services/YtMusic.qml:2043, services/WebWallpaper.qml:75, services/Brightness.qml:512, modules/common/Directories.qml:78,107,108 | other fixed `/tmp` paths (mpv socket, pid file, screenshots, images, cliphist decode) | open |
+| 1 | M | services/Ai.qml:959, services/ai/GeminiApiStrategy.qml:238 | AI request script and upload temp files at fixed `/tmp/quickshell/ai/*` paths; the request script is executed | fixed `3613554` (`$XDG_RUNTIME_DIR/kwinir/ai`, 0700) |
+| 2 | L | services/YtMusic.qml:2043, services/WebWallpaper.qml:75, services/Brightness.qml:512, modules/common/Directories.qml:78,107,108 | other fixed `/tmp` paths (mpv socket, pid file, screenshots, images, cliphist decode — private data readable by other users; startup `rm -rf` followed symlinked parents) | fixed `3613554` (verified: live bar writes nothing under `/tmp/quickshell`) |
 | 3 | L | services/GlobalActions.qml, other lazy singletons | IPC targets only exist after the singleton is created. 11 lazy at start: ai, appCatalog, autostart, cliphistService, packageSearch, dev, globalActions, minimize, shellUpdate, voiceSearch, widgetpower — none bound to a hotkey | needs approval — recommend **leave**: waking them would start iNiR's Autostart and ShellUpdates services |
 | 4 | I | shell.qml / sidebars | sidebars keep ~250 MB resident after first open (upstream "resume where you left off") | needs approval |
 | 5 | L | services/AppLauncher.qml:199 | browser preset in settings also runs `xdg-settings set default-web-browser` (system setting) | needs approval |
@@ -187,6 +188,10 @@ needs approval.
 | 35 | I | IPC (Quickshell socket) | socket under `/run/user/1000` (0700) — same user only, not visible to Flatpak apps; every function is something the user could already do. Riskiest targets live in lazy services not loaded here: `autostart.addCommand`, `shellUpdate.performUpdate` (would pull upstream iNiR over the port), `appCatalog.install` | no action — keep ShellUpdates/Autostart unloaded |
 | 36 | L | `~/.config/pillbar/config.json` `hotspot.password` | the stored hotspot password is **iNiR's public factory default** — not a leak, but a hotspot started from the pill would use a known password | needs approval — set your own before ever using the hotspot |
 | 37 | L | `~/.config/pillbar/` | config + ~10 `config.json.bak-*` are world-readable (0644); they hold the hotspot password. AI keys are in the system keyring (secret-tool), weather needs no key, git history scanned clean (API/private-key patterns), `.gitignore` covers `__pycache__` | needs approval — `chmod 600` the config and backups (outside the repo, so not done) |
+| 38 | L | services/Ai.qml:1406 | AI endpoint sits in double quotes (so the Gemini key token expands) — `$(…)`/backticks in an endpoint from a refreshed catalog would run; no connect timeout | fixed `b996e0a` (escaped except the key token; `--connect-timeout 15`) |
+| 39 | L | Favicon.qml, BooruImage.qml | `curl` without timeouts | fixed `f12aeaa` |
+| 40 | L | services/Weather.qml:867 | IP geolocation fallback `ip-api.com` is **plain HTTP** (its free tier has no HTTPS); unused with your manual city | needs approval — recommend dropping it (ipwho.is over HTTPS is already a fallback) |
+| 41 | I | Booru.qml, AnimeService.qml, NewsService.qml | `XMLHttpRequest` without timeout — Qt 6.11's QML XHR has **no** `timeout` (verified); a stalled request only leaves a spinner, and refresh starts a new one | no action |
 | 30 | I | services/Ai.qml:1672 | AI `run_shell_command` runs model-chosen bash — **not offered** with your `ai.tool: functions`, and every raw command waits for your Approve click | no action |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
@@ -243,5 +248,6 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
 - Phase 4 (3)(4): IPC listed live (`qs ipc show`) + lazy targets from source (#35); secrets (#36, #37).
   Chasing a config write seen at 09:19 found #34 (the settings harness and the settings
   window write the same way). Every config test restored the original bytes (`cmp`).
+- Phase 4 (5)(6): network (#38–#41) and temp files (#1, #2). Phase 4 complete.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
