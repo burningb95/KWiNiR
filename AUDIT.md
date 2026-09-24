@@ -16,9 +16,13 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 1 is written; start **Phase 2**: run the bar with `QS_ARGS="--log-rules qml.debug=true"`
-through `test-staging.sh` with both sidebars, settings pages and pill surfaces driven by IPC,
-collect every warning into *Findings*, and fix them one commit each.
+Phase 2, remaining parts: (a) missing-data paths — read Battery/UPower, BluetoothStatus,
+Network, MprisController, Audio (Pipewire) for null handling when the device/service is
+absent or restarts; (b) config robustness — feed wrong types / unknown values for the port's
+own options (rowOrder, candy, hiddenTypes, shellLayout, jobProgress, light.night) through
+`tools/cfgset.py` on staging and watch the log; (c) init races — lazy singletons whose IPC
+targets are missing at start (#3). Environment items that can't be exercised safely (monitor
+hotplug, sleep/resume, KWin restart) get a code review instead.
 
 ## Plan
 
@@ -104,7 +108,7 @@ Measured with `tools/measure-idle.sh 60`, bar idle, bar process tree:
 
 | Area | Status |
 |---|---|
-| shell.qml, settings.qml, GlobalStates.qml | todo |
+| shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children) |
 | modules/common (Config, Appearance, Directories, Persistent, functions) | todo |
 | modules/common/widgets | todo |
 | modules/pill | todo |
@@ -133,6 +137,12 @@ needs approval.
 | 4 | I | shell.qml / sidebars | sidebars keep ~250 MB resident after first open (upstream "resume where you left off") | needs approval |
 | 5 | L | services/AppLauncher.qml:199 | browser preset in settings also runs `xdg-settings set default-web-browser` (system setting) | needs approval |
 | 6 | L | settings process | Quick page instantiates the notification server in the settings process, which retries registration if the bar's server disappears | open |
+| 7 | M | shell.qml, services/KWinService.qml, Hyprsunset.qml, Network.qml, deferred/CavaService.qml | long-running children (clipboard watcher, 2× gdbus monitor, nmcli monitor, cava) orphaned when the bar is killed/crashes — 48 monitors + 6 clipboard watchers had piled up; orphaned watchers kept recording clipboard history after it was switched off | fixed `6ef15c1` (setpriv --pdeathsig) |
+| 8 | L | services/Network.qml:227 | upstream runs `pkill -f "nmcli monitor"` at start to clear its own orphans — also kills any `nmcli monitor` the user runs elsewhere; unnecessary now (#7) | needs approval (remove) |
+| 9 | I | ~/.config/pillbar/avatar.svg (user file) | 2× "qt.svg: Invalid path data" per load; renders fine | needs approval (clean the SVG) |
+| 10 | L | modules/common/Directories.qml:73 | optional AccountsService avatar watcher logged "does not exist" every start | fixed `5cf6878` |
+| 11 | L | services/CustomWidgets.qml:44 | Monitors page ran the unshipped scan-widgets.sh ("Process failed to start") | fixed `3116dcd` |
+| 12 | M | services/CustomWidgets.qml:227,403 | widget create/remove build `rm -rf "…/${widgetId}"` shell strings from a name (injection pattern); only reachable from the hidden Desktop Widgets page | open (phase 4) |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
 toast rich text `9be3225`, theming guards `6c5ed14`.)
@@ -144,3 +154,10 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
 ## Log
 
 - `audit` branched from `main` at `d710009` (clean tree, no snapshot commit needed).
+- Phase 2 warnings pass: live journal since 12:00 aggregated; staging run driving both sidebars,
+  4 left tabs and all 12 pill surfaces over IPC (24 calls, all reached the bar); all 60
+  settings page/sections rendered via `_harness.qml`. Result: no QML warnings left except the
+  user's avatar SVG (#9). Stale warnings (pre-15:04 missing assets, `imgStatus` loop,
+  `mocha.jpg` test file, broken-config test) confirmed gone. `5cf6878`, `3116dcd`.
+- Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
+  killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
