@@ -29,7 +29,9 @@ ContentPage {
         })
         options: [
             { displayName: Translation.tr("Color"), icon: "colors", value: "color" },
-            { displayName: Translation.tr("Resources"), icon: "memory_alt", value: "resources" }
+            { displayName: Translation.tr("Resources"), icon: "memory_alt", value: "resources" },
+            // KWin port: global reset + the shortcuts this port registers.
+            { displayName: Translation.tr("Reset & shortcuts"), icon: "restart_alt", value: "reset" }
         ]
     }
 
@@ -73,7 +75,17 @@ ContentPage {
         title: Translation.tr("Color generation")
 
         SettingsGroup {
+            // KWin port: say why the app-theming switches are gone.
+            StyledText {
+                visible: CompositorService.isKWin
+                Layout.fillWidth: true
+                text: Translation.tr("Theming other apps (GTK, Qt, terminal, editors, browsers, Discord, Spotify, Steam) is switched off in this KWin port and its switches are hidden: your system themes stay as they are. Only the shell's own colors follow your palette.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.small
+                wrapMode: Text.WordWrap
+            }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "hardware"
                 text: Translation.tr("Shell & utilities")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableAppsAndShell ?? true
@@ -86,6 +98,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "tv_options_input_settings"
                 text: Translation.tr("Qt apps")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableQtApps ?? true
@@ -98,6 +111,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "terminal"
                 text: Translation.tr("Terminal")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableTerminal ?? true
@@ -110,6 +124,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "chat"
                 text: Translation.tr("Vesktop/Discord")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableVesktop ?? true
@@ -122,6 +137,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "music_note"
                 text: Translation.tr("Spotify (Spicetify)")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? false
@@ -135,7 +151,7 @@ ContentPage {
             }
 
             ContentSubsection {
-                visible: Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? false
+                visible: !CompositorService.isKWin && (Config.options?.appearance?.wallpaperTheming?.enableSpicetify ?? false)
                 title: Translation.tr("Spotify theme")
                 tooltip: Translation.tr("Choose the Spicetify layout while keeping iNiR wallpaper colors")
 
@@ -152,6 +168,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "sports_esports"
                 text: Translation.tr("Steam (Millennium)")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableSteam ?? false
@@ -164,6 +181,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "music_note"
                 text: Translation.tr("Pear Desktop (YouTube Music)")
                 checked: Config.options?.appearance?.wallpaperTheming?.enablePearDesktop ?? true
@@ -176,6 +194,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "code"
                 text: Translation.tr("Zed editor")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableZed ?? true
@@ -188,6 +207,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "code"
                 text: Translation.tr("VSCode editors")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableVSCode ?? true
@@ -200,6 +220,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "language"
                 text: Translation.tr("Chrome / Chromium")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableChrome ?? true
@@ -212,6 +233,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "code"
                 text: Translation.tr("OpenCode")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableOpenCode ?? false
@@ -224,6 +246,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app theming is off in this port
                 buttonIcon: "code"
                 text: Translation.tr("Neovim / LazyVim")
                 checked: Config.options?.appearance?.wallpaperTheming?.enableNeovim ?? false
@@ -236,6 +259,7 @@ ContentPage {
                 }
             }
             SettingsSwitch {
+                visible: !CompositorService.isKWin  // KWin port: app/terminal theming is off
                 id: cavaSwitch
                 buttonIcon: "equalizer"
                 text: Translation.tr("Theme standalone Cava")
@@ -388,6 +412,7 @@ ContentPage {
             ConfigRow {
                 uniform: true
                 SettingsSwitch {
+                    visible: !CompositorService.isKWin  // KWin port: app/terminal theming is off
                     buttonIcon: "dark_mode"
                     text: Translation.tr("Force dark mode in terminal")
                     checked: Config.options?.appearance?.wallpaperTheming?.terminalGenerationProps?.forceDarkMode ?? false
@@ -402,6 +427,7 @@ ContentPage {
             }
 
             ConfigSpinBox {
+                visible: !CompositorService.isKWin  // KWin port: app/terminal theming is off
                 icon: "invert_colors"
                 text: Translation.tr("Terminal: Harmony (%)")
                 value: Math.round(((Config.options?.appearance?.wallpaperTheming?.terminalColorAdjustments?.harmony ?? Config.options?.appearance?.wallpaperTheming?.terminalGenerationProps?.harmony ?? 0.4) * 100))
@@ -421,6 +447,7 @@ ContentPage {
                 }
             }
             ConfigSpinBox {
+                visible: !CompositorService.isKWin  // KWin port: app/terminal theming is off
                 icon: "gradient"
                 text: Translation.tr("Terminal: Harmonize threshold")
                 value: Config.options?.appearance?.wallpaperTheming?.terminalGenerationProps?.harmonizeThreshold ?? 100
@@ -436,6 +463,7 @@ ContentPage {
                 }
             }
             ConfigSpinBox {
+                visible: !CompositorService.isKWin  // KWin port: app/terminal theming is off
                 icon: "format_color_text"
                 text: Translation.tr("Terminal: Foreground boost (%)")
                 value: Math.round((Config.options?.appearance?.wallpaperTheming?.terminalGenerationProps?.termFgBoost ?? 0) * 100)
@@ -475,6 +503,72 @@ ContentPage {
                 StyledToolTip {
                     text: Translation.tr("Poll GPU usage and temperature. Disable on hybrid laptops to keep the dGPU asleep — also pins Qt to the iGPU on next restart.")
                 }
+            }
+        }
+    }
+        }
+    }
+
+    // KWin port: shortcuts registered for this bar, and the global reset.
+    SettingsTaskLoader {
+        requested: root.activeSection === "reset"
+        sourceComponent: Component {
+    SettingsCardSection {
+        settingsTaskSection: "reset"
+        expanded: true
+        icon: "restart_alt"
+        title: Translation.tr("Reset & shortcuts")
+
+        SettingsGroup {
+            ContentSubsection {
+                title: Translation.tr("Keyboard shortcuts")
+                Repeater {
+                    model: [
+                        { keys: "Meta + ,", what: Translation.tr("Open / close this settings window") },
+                        { keys: "Meta + Shift + Space", what: Translation.tr("Toggle the right sidebar") },
+                        { keys: "Ctrl + Shift + Space", what: Translation.tr("Toggle the left sidebar") },
+                        { keys: Translation.tr("(unbound)"), what: Translation.tr("Peek the Pill — bind \"Pill bar: peek\" in System Settings › Shortcuts") }
+                    ]
+                    RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 12
+                        StyledText {
+                            Layout.preferredWidth: 220
+                            text: modelData.keys
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colPrimary
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: modelData.what
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colOnLayer1
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("These are KDE global shortcuts (System Settings › Shortcuts, under the \"Pill bar\" entries), so they can be changed there. To remove them: REVERT-settings-hotkey.sh and REVERT-hotkeys.sh in ~/.local/share/Fancy-Floating-Bar.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            PageResetFooter {
+                Layout.fillWidth: true
+                scope: [""]
+                backupFirst: true
+                description: Translation.tr("Resets EVERY option on every page; config.json is copied to config.json.bak-before-reset-<time> first. iNiR defaults is a big change (bar style, hidden pages, layout).")
+                onResetDone: Qt.callLater(() => {
+                    if ((Config.options?.appearance?.theme ?? "auto") === "auto")
+                        UserPalettes.apply(Config.options?.appearance?.userPalette ?? "plum")
+                    else
+                        ThemeService.applyCurrentTheme()
+                })
             }
         }
     }

@@ -34,12 +34,16 @@ Singleton {
     }
 
     function apply(name: string): bool {
-        if (!root.names.includes(name)) {
+        // The folder scan is async: on the first call after the (lazy) singleton
+        // wakes, names is still empty. Only trust the list once it's Ready;
+        // before that, a safe name is enough (the copy below refuses a missing file).
+        const scanned = folder.status === FolderListModel.Ready
+        if (!/^[A-Za-z0-9_-]+$/.test(name) || (scanned && !root.names.includes(name))) {
             console.warn("[UserPalettes] unknown palette:", name, "- have:", root.names.join(", "))
             return false
         }
         Quickshell.execDetached(["/usr/bin/bash", "-c",
-            'f="$2"; [ -s "$f" ] && cp -p "$f" "$f.bak-$(date +%s)"; ls -t "$f".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f; cp "$1" "$f"',
+            '[ -s "$1" ] || exit 1; f="$2"; [ -s "$f" ] && cp -p "$f" "$f.bak-$(date +%s)"; ls -t "$f".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f; cp "$1" "$f"',
             "bash", `${root.dir}/colors.${name}.json`, Directories.generatedMaterialThemePath])
         Config.setNestedValues({ "appearance.theme": "auto", "appearance.userPalette": name })
         return true

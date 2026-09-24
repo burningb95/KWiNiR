@@ -1851,12 +1851,17 @@ ContentPage {
             SettingsSwitch {
                 buttonIcon: "fullscreen"
                 text: Translation.tr("Auto-detect fullscreen")
+                // KWin port: detection reads niri's window list; KWin gives Quickshell
+                // none, so on KWin game mode is manual (toggle / IPC) for now.
+                enabled: !CompositorService.isKWin
                 checked: Config.options?.gameMode?.autoDetect ?? true
                 onCheckedChanged: {
                     Config.setNestedValue("gameMode.autoDetect", checked)
                 }
                 StyledToolTip {
-                    text: Translation.tr("Automatically enable Game Mode when apps go fullscreen")
+                    text: CompositorService.isKWin
+                        ? Translation.tr("Not available on KWin yet: it needs the fullscreen state of windows, which KWin doesn't give this shell. Use the Game mode toggle.")
+                        : Translation.tr("Automatically enable Game Mode when apps go fullscreen")
                 }
             }
 
@@ -1896,7 +1901,61 @@ ContentPage {
                 }
             }
 
+            // KWin port: which KWin effects game mode unloads for the session
+            // (gameMode.kwinEffects; never written to kwinrc, restored after).
+            ColumnLayout {
+                visible: CompositorService.isKWin
+                enabled: Config.options?.gameMode?.disableEffects ?? true
+                Layout.fillWidth: true
+                spacing: 6
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("KWin effects to pause (with Disable effects on). Only effects loaded at the time are touched; they come back when game mode ends.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    wrapMode: Text.WordWrap
+                }
+                Flow {
+                    id: kwinEffectsFlow
+                    Layout.fillWidth: true
+                    spacing: 6
+                    readonly property var chosen: Array.from(Config.options?.gameMode?.kwinEffects ?? [])
+                    readonly property var candidates: [
+                        { id: "fade", label: Translation.tr("Fade") },
+                        { id: "fadingpopups", label: Translation.tr("Fading popups") },
+                        { id: "slide", label: Translation.tr("Desktop slide") },
+                        { id: "slidingpopups", label: Translation.tr("Sliding popups") },
+                        { id: "slidingnotifications", label: Translation.tr("Sliding notifications") },
+                        { id: "magiclamp", label: Translation.tr("Magic lamp") },
+                        { id: "maximize", label: Translation.tr("Maximize") },
+                        { id: "wobblywindows", label: Translation.tr("Wobbly windows") },
+                        { id: "windowaperture", label: Translation.tr("Window aperture") },
+                        { id: "blendchanges", label: Translation.tr("Blend changes") },
+                        { id: "fullscreen", label: Translation.tr("Fullscreen") },
+                        { id: "screentransform", label: Translation.tr("Screen transform") },
+                        { id: "glass", label: Translation.tr("Glass blur") },
+                        { id: "kwin4_effect_shapecorners", label: Translation.tr("Shape corners") },
+                        { id: "dimscreen", label: Translation.tr("Dim screen") }
+                    ]
+                    Repeater {
+                        model: kwinEffectsFlow.candidates
+                        FilterChip {
+                            required property var modelData
+                            selected: kwinEffectsFlow.chosen.includes(modelData.id)
+                            chipIcon: selected ? "pause" : "play_arrow"
+                            text: modelData.label
+                            onClicked: {
+                                const next = kwinEffectsFlow.chosen.filter(e => e !== modelData.id)
+                                if (!selected) next.push(modelData.id)
+                                Config.setNestedValue("gameMode.kwinEffects", next)
+                            }
+                            StyledToolTip { text: modelData.id }
+                        }
+                    }
+                }
+            }
             SettingsSwitch {
+                visible: !CompositorService.isKWin
                 buttonIcon: "desktop_windows"
                 text: Translation.tr("Disable Niri animations")
                 checked: Config.options?.gameMode?.disableNiriAnimations ?? true
@@ -1942,6 +2001,13 @@ ContentPage {
                 StyledToolTip {
                     text: Translation.tr("Hide notification popups while Game Mode is active")
                 }
+            }
+
+            // KWin port: per-section reset (the Quick page mixes many areas).
+            PageResetFooter {
+                Layout.fillWidth: true
+                scope: ["gameMode"]
+                description: Translation.tr("Puts every Game Mode option back, including the KWin effects list.")
             }
         }
     }

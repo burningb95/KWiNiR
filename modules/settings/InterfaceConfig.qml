@@ -543,6 +543,53 @@ ContentPage {
                 }
             }
 
+            // KWin port: the per-urgency timings the service already reads
+            // (notifications.timeoutLow / timeoutCritical / ignoreAppTimeout /
+            // maxPopupLifetime) had no controls. "Timeout" above is the normal one.
+            ConfigRow {
+                uniform: true
+                ConfigSpinBox {
+                    icon: "low_priority"
+                    text: Translation.tr("Low priority (ms)")
+                    value: Config.options?.notifications?.timeoutLow ?? 5000
+                    from: 1000
+                    to: 30000
+                    stepSize: 500
+                    onValueChanged: Config.setNestedValue("notifications.timeoutLow", value)
+                    StyledToolTip { text: Translation.tr("Quiet notifications such as \"download finished\"") }
+                }
+                ConfigSpinBox {
+                    icon: "priority_high"
+                    text: Translation.tr("Critical (ms)")
+                    value: Config.options?.notifications?.timeoutCritical ?? 0
+                    from: 0
+                    to: 120000
+                    stepSize: 1000
+                    onValueChanged: Config.setNestedValue("notifications.timeoutCritical", value)
+                    StyledToolTip { text: Translation.tr("Urgent notifications (low battery…). 0 = stays until dismissed") }
+                }
+            }
+            ConfigRow {
+                uniform: true
+                ConfigSwitch {
+                    buttonIcon: "timer_off"
+                    text: Translation.tr("Ignore app timeouts")
+                    checked: Config.options?.notifications?.ignoreAppTimeout ?? false
+                    onCheckedChanged: Config.setNestedValue("notifications.ignoreAppTimeout", checked)
+                    StyledToolTip { text: Translation.tr("Use the timings here even when an app asks for its own display time") }
+                }
+                ConfigSpinBox {
+                    icon: "hourglass_bottom"
+                    text: Translation.tr("Max popup time (ms)")
+                    value: Config.options?.notifications?.maxPopupLifetime ?? 30000
+                    from: 0
+                    to: 300000
+                    stepSize: 5000
+                    onValueChanged: Config.setNestedValue("notifications.maxPopupLifetime", value)
+                    StyledToolTip { text: Translation.tr("Hard cap: no popup stays longer than this, whatever the app asked. 0 = no cap") }
+                }
+            }
+
             ConfigSwitch {
                 buttonIcon: "pinch"
                 text: Translation.tr("Scale on hover")
@@ -649,6 +696,13 @@ ContentPage {
                         { displayName: Translation.tr("Bottom Left"), icon: "south_west", value: "bottomLeft" }
                     ]
                 }
+            }
+
+            // KWin port: page 7 reset (popup timings, position, quiet hours, blocked apps…).
+            PageResetFooter {
+                Layout.fillWidth: true
+                scope: ["notifications"]
+                description: Translation.tr("Puts every notification option back.")
             }
         }
     }

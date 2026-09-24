@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -21,6 +22,11 @@ ContentSubsection {
     property string description: ""
     property string armed: ""   // "", "baseline" or "factory"
     property string result: ""
+    signal resetDone(string source)   // for pages whose state isn't only config (palette file)
+    // Copy config.json to config.json.bak-before-reset-<time> first; the reset
+    // only runs once the copy has finished (used by the global reset).
+    property bool backupFirst: false
+    property string _pendingSource: ""
 
     title: Translation.tr("Reset")
 
@@ -31,9 +37,28 @@ ContentSubsection {
             return
         }
         root.armed = ""
+        if (root.backupFirst) {
+            if (backupProc.running) return
+            root._pendingSource = source
+            backupProc.command = ["/usr/bin/cp", "-p", Config.filePath,
+                `${Config.filePath}.bak-before-reset-${Math.floor(Date.now() / 1000)}`]
+            backupProc.running = true
+            return
+        }
+        root._run(source)
+    }
+    Process {
+        id: backupProc
+        onExited: (code, status) => {
+            if (code === 0) root._run(root._pendingSource)
+            else root.result = Translation.tr("Backup failed, nothing was reset")
+        }
+    }
+    function _run(source: string): void {
         let n = 0
         for (const p of root.scope) n += Math.max(0, Config.resetPath(p, source))
         root.result = Translation.tr("Reset %1 values").arg(n)
+        root.resetDone(source)
     }
     Timer { id: armTimer; interval: 4000; onTriggered: root.armed = "" }
 

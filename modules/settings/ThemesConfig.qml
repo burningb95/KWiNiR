@@ -117,6 +117,106 @@ ContentPage {
         return testFont.family.toLowerCase() === fontName.toLowerCase()
     }
 
+    // KWin port: burningb95's own palettes (extras/theme/colors.<name>.json) as
+    // one-click presets via UserPalettes.apply (backs up colors.json, last 5).
+    SettingsTaskLoader {
+        requested: CompositorService.isKWin && root.activeSection === "colors"
+        sourceComponent: Component {
+    SettingsCardSection {
+        settingsTaskSection: "colors"
+        expanded: true
+        icon: "format_paint"
+        title: Translation.tr("My palettes")
+
+        SettingsGroup {
+            StyledText {
+                Layout.fillWidth: true
+                text: Translation.tr("Your own color files. The presets below replace the palette too; the one they replace is backed up (last 5), and picking yours here brings it back.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.small
+                wrapMode: Text.WordWrap
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 8
+
+                Repeater {
+                    model: UserPalettes.names
+                    RippleButton {
+                        id: paletteCard
+                        required property string modelData
+                        readonly property bool current: (Config.options?.appearance?.theme ?? "auto") === "auto"
+                            && UserPalettes.current === modelData
+                        readonly property var pal: {
+                            try { return JSON.parse(paletteFile.text()) } catch (e) { return ({}) }
+                        }
+                        FileView {
+                            id: paletteFile
+                            path: `${UserPalettes.dir}/colors.${paletteCard.modelData}.json`
+                            blockLoading: true
+                        }
+
+                        Layout.fillWidth: true
+                        implicitHeight: 56
+                        buttonRadius: Appearance.rounding.normal
+                        colBackground: paletteCard.pal.background ?? Appearance.colors.colLayer1
+                        colBackgroundHover: paletteCard.pal.surface_container ?? Appearance.colors.colLayer1Hover
+                        colRipple: paletteCard.pal.surface_container_high ?? Appearance.colors.colLayer1Active
+                        onClicked: UserPalettes.apply(modelData)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Appearance.rounding.normal
+                            color: "transparent"
+                            border.width: paletteCard.current ? 2 : 1
+                            border.color: paletteCard.current ? (paletteCard.pal.primary ?? Appearance.colors.colPrimary)
+                                : Appearance.colors.colOutlineVariant
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+                            spacing: 10
+
+                            Row {
+                                spacing: -6
+                                Repeater {
+                                    model: ["primary", "secondary", "tertiary", "surface_container"]
+                                    Rectangle {
+                                        required property string modelData
+                                        width: 22; height: 22; radius: 11
+                                        color: paletteCard.pal[modelData] ?? "transparent"
+                                        border.width: 2
+                                        border.color: paletteCard.pal.background ?? Appearance.colors.colLayer1
+                                    }
+                                }
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: paletteCard.modelData.charAt(0).toUpperCase() + paletteCard.modelData.slice(1)
+                                font.pixelSize: Appearance.font.pixelSize.normal
+                                font.weight: Font.DemiBold
+                                color: paletteCard.pal.on_background ?? Appearance.colors.colOnLayer1
+                            }
+                            MaterialSymbol {
+                                visible: paletteCard.current
+                                text: "check_circle"
+                                iconSize: Appearance.font.pixelSize.larger
+                                color: paletteCard.pal.primary ?? Appearance.colors.colPrimary
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+        }
+    }
+
     SettingsTaskLoader {
         requested: root.activeSection === "colors"
         sourceComponent: Component {
@@ -686,8 +786,10 @@ ContentPage {
     }
 
     // Scheme Variant Section
+    // KWin port: hidden. Variants are generated by switchwall.sh (blocked), so it
+    // would do nothing; palettes here are static files (see "My palettes").
     SettingsTaskLoader {
-        requested: root.activeSection === "colors"
+        requested: !CompositorService.isKWin && root.activeSection === "colors"
         sourceComponent: Component {
     SettingsCardSection {
         settingsTaskSection: "colors"
@@ -1130,8 +1232,10 @@ ContentPage {
     }
 
     // Terminal Colors Section
+    // KWin port: hidden. It themes terminals (writes into every open terminal and
+    // their configs via applycolor.sh) — off-limits for this port.
     SettingsTaskLoader {
-        requested: root.activeSection === "advanced" && !(Config.options?.settingsUi?.easyMode ?? false)
+        requested: !CompositorService.isKWin && root.activeSection === "advanced" && !(Config.options?.settingsUi?.easyMode ?? false)
         sourceComponent: Component {
     SettingsCardSection {
         id: terminalColorsSection
@@ -1590,7 +1694,7 @@ ContentPage {
                     }
                 }
 
-                onClicked: applyTerminalColorsProcess.running = true
+                onClicked: if (MaterialThemeLoader.defaultApplyExternal) applyTerminalColorsProcess.running = true
 
                 StyledToolTip {
                     text: Translation.tr("Apply current colors to all open terminal windows without restarting them")
@@ -2109,5 +2213,19 @@ ContentPage {
         }
     }
         }
+    }
+
+    // KWin port: per-page reset. The palette itself is a file, so after the config
+    // reset the selected palette (appearance.userPalette) is copied back in too.
+    PageResetFooter {
+        Layout.fillWidth: true
+        scope: ["appearance"]
+        description: Translation.tr("Puts colors, style, type, motion and transparency back, and re-applies the palette they name.")
+        onResetDone: Qt.callLater(() => {
+            if ((Config.options?.appearance?.theme ?? "auto") === "auto")
+                UserPalettes.apply(Config.options?.appearance?.userPalette ?? "plum")
+            else
+                ThemeService.applyCurrentTheme()
+        })
     }
 }

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Pill bar: open settings
+Comment=Fancy-Floating-Bar (iNiR settings window via Quickshell IPC)
+Exec=/usr/bin/qs -c pillbar ipc call settings toggle
+NoDisplay=true
+StartupNotify=false
+X-KDE-GlobalAccel-CommandShortcut=true

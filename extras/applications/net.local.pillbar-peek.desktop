@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Pill bar: peek
+Comment=Fancy-Floating-Bar (reveal the pill for a moment; stand-in for holding Super)
+Exec=/usr/bin/qs -c pillbar ipc call pill peek
+NoDisplay=true
+StartupNotify=false
+X-KDE-GlobalAccel-CommandShortcut=true
