@@ -16,14 +16,12 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 4 (security): (1) the 64 `bash -c`/`sh -c` scripts from `tools/audit-inventory.py`
-(`shell` list) — flag any that interpolate outside data (notification text, window titles,
-SSIDs, file names, media metadata, config values) and convert to argument arrays; start with
-#12 (CustomWidgets `rm -rf`) and #1/#2 (fixed `/tmp` paths); (2) rich text: grep
-`textFormat` / `Text.RichText` / `StyledText` in notification, media and tooltip views;
-(3) IPC surface: list every target's functions and flag anything that runs commands or reads
-secrets; (4) secrets: AI/weather keys, `.gitignore`, permissions of `~/.config/pillbar`;
-(5) network: HTTPS-only, timeouts, failure handling.
+Phase 4, remaining: (2) rich text — grep `textFormat` / `Text.RichText` / `StyledText` /
+`Text.MarkdownText` in notification, media, AI and tooltip views; check remote images can't
+load; (3) IPC surface — every target's functions, flag command execution / secret reads;
+(4) secrets — AI/weather keys, `.gitignore`, `~/.config/pillbar` permissions; (5) network —
+HTTPS-only (ip-api.com is plain HTTP: Weather.qml:866), timeouts, failure handling;
+(6) temp files — #1, #2.
 
 ## Plan
 
@@ -177,7 +175,15 @@ needs approval.
 | 20 | M | services/KWinService.qml:217 | 2 `gdbus call` spawns every 5 s (focused output + overview) — 0.38 % of a core, 3× the bar's own idle cost | fixed `3915a19` (same 5 s poll inside the bridge helper, reported every poll; gdbus poll kept as fallback; kill-test verified) |
 | 21 | M | modules/sidebarLeft/widgets/StatusRings.qml:14 | the left sidebar's window stays mapped when closed, so the CPU/RAM rings kept ResourceUsage polling `/proc` every 3 s forever after the first open | fixed `66b4b47` (monitor gated on `sidebarLeftOpen`; 15 s auto-stop verified) |
 | 22 | I | modules/pill/Ame.qml:332 | the pill's idle animation repaints its canvas 12×/s whenever the pill is visible, including under fullscreen windows | needs approval — optional: pause while game mode / a fullscreen window is up (changes nothing you'd see) |
-| 12 | M | services/CustomWidgets.qml:227,403 | widget create/remove build `rm -rf "…/${widgetId}"` shell strings from a name (injection pattern); only reachable from the hidden Desktop Widgets page | open (phase 4) |
+| 12 | M | services/CustomWidgets.qml:227,403 | widget create/remove build `rm -rf "…/${widgetId}"` shell strings from a name (injection pattern; `..` would delete the widgets folder's parent); only reachable from the hidden Desktop Widgets page | fixed `aa4d998` (ids limited to `[A-Za-z0-9_-]`, rm target as argument) |
+| 23 | **H** | services/Wallpapers.qml:1113 | thumbnail command quoted paths with `JSON.stringify` (double quotes: `$(…)` still expands) — a wallpaper **file name** ran commands (reproduced in a scratch dir) | fixed `f2f1295` |
+| 24 | M | services/Weather.qml:552 | wttr.in URL in a single-quoted shell string; `encodeURIComponent` leaves `'` alone; city can come from an IP-lookup reply | fixed `4d601c6` (argv) |
+| 25 | M | modules/common/widgets/Favicon.qml:32 | AI search-source display text used as "domain": unquoted in the script and in the cache path | fixed `3a7c208` |
+| 26 | M | modules/sidebarLeft/anime/BooruImage.qml:94,266,281 | API-reply URLs in single-quoted bash (×3) **and path traversal**: file name URL-decoded from the reply (`%2F` → `../../.bashrc`) | fixed `b9d3150` (tab hidden for you: `policies.weeb 0`) |
+| 27 | M | modules/sidebarLeft/aiChat/MessageCodeBlock.qml:103 | AI code-fence language tag unescaped in the save path | fixed `9e7e70b` |
+| 28 | L | WorldClockWidget.qml:99, settings/InterfaceConfig.qml:1459 | configured timezones spliced into a script (config input) | fixed `66f923c` (identical output, diffed) |
+| 29 | L | modules/common/ThemePresets.qml:3905 | palette files written by single-quoting JSON ("JSON has no single quotes" — false for string values): an apostrophe in a theme/palette name broke the write or ran as shell | fixed `0b4f25f` |
+| 30 | I | services/Ai.qml:1672 | AI `run_shell_command` runs model-chosen bash — **not offered** with your `ai.tool: functions`, and every raw command waits for your Approve click | no action |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
 toast rich text `9be3225`, theming guards `6c5ed14`.)
@@ -217,5 +223,12 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   (#18, #20) and the post-sidebar pollers (#19, #21, bisected right vs left sidebar on staging).
   Infinite animations in both sidebars are already gated on `sidebar*Open`. Left sidebar
   banner: screen-sized async decode, released on close — fine.
+- Phase 4 (1) shell strings: all 64 `bash -c`/`sh -c` sites from the inventory read. Safe as-is:
+  positional-argument scripts (GlobalStates, MediaArtworkResolver, Hyprsunset, GameMode,
+  UserPalettes, WebWallpaper, ResourceUsage, PillSysmon, CustomWidgets scan), fixed text
+  (AppCatalog, PillLink, MprisController probe), properly escaped (Brightness, Cliphist —
+  ids are digits-only, CliphistImage, AiChat, CustomThemeEditor, Gowall `_shellEscape`),
+  constants (LinkWifi hotspot name). ShellUpdates (disabled in config) and ScreenTime
+  (skipped by you) not reviewed in depth. Fixed #12, #23–#29.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
