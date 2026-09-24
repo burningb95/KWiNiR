@@ -16,9 +16,7 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 4, remaining: (2) rich text — grep `textFormat` / `Text.RichText` / `StyledText` /
-`Text.MarkdownText` in notification, media, AI and tooltip views; check remote images can't
-load; (3) IPC surface — every target's functions, flag command execution / secret reads;
+Phase 4, remaining: (3) IPC surface — every target's functions, flag command execution / secret reads;
 (4) secrets — AI/weather keys, `.gitignore`, `~/.config/pillbar` permissions; (5) network —
 HTTPS-only (ip-api.com is plain HTTP: Weather.qml:866), timeouts, failure handling;
 (6) temp files — #1, #2.
@@ -183,6 +181,9 @@ needs approval.
 | 27 | M | modules/sidebarLeft/aiChat/MessageCodeBlock.qml:103 | AI code-fence language tag unescaped in the save path | fixed `9e7e70b` |
 | 28 | L | WorldClockWidget.qml:99, settings/InterfaceConfig.qml:1459 | configured timezones spliced into a script (config input) | fixed `66f923c` (identical output, diffed) |
 | 29 | L | modules/common/ThemePresets.qml:3905 | palette files written by single-quoting JSON ("JSON has no single quotes" — false for string values): an apostrophe in a theme/palette name broke the write or ran as shell | fixed `0b4f25f` |
+| 31 | **H** | NotificationUtils / NotificationItem / PillLink | notification body (RichText), summary and pill row (auto-detected styled text) **fetched remote `<img>`** the moment a notification arrived — any app/website gets a read receipt + your IP (local HTTP server: 1 request → 0) | fixed `b492ed5` (remote `<img>` dropped; local/file/data images kept) |
+| 32 | M | Marquee, PillOsd, Pill, MediaPlayerWidget, PillMixer, Tooltip | MPRIS titles/artists (a web page's title via the browser) and device names in auto-detected styled text — same remote-image fetch (fake MPRIS player: 2 requests → 0) | fixed `0785afa` (plain text; normal titles identical; tooltip keeps markup minus remote images) |
+| 33 | M | modules/sidebarLeft/aiChat/MessageTextBlock.qml:164 | AI replies render as Markdown and Qt fetches `![](http…)`/`<img>` on display — prompt-injection exfiltration channel (offscreen Qt test: 1 request → 0) | fixed `757fcc5` (remote images become links; LaTeX images kept) |
 | 30 | I | services/Ai.qml:1672 | AI `run_shell_command` runs model-chosen bash — **not offered** with your `ai.tool: functions`, and every raw command waits for your Approve click | no action |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
@@ -230,5 +231,11 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   ids are digits-only, CliphistImage, AiChat, CustomThemeEditor, Gowall `_shellEscape`),
   constants (LinkWifi hotspot name). ShellUpdates (disabled in config) and ScreenTime
   (skipped by you) not reviewed in depth. Fixed #12, #23–#29.
+- Phase 4 (2) rich text: every `textFormat` Rich/Styled/Markdown in displayed views, plus Qt's
+  default `AutoText` (which becomes StyledText — with `<img>` — whenever text starts like a
+  tag). Each suspected path was **reproduced against a local HTTP server** before fixing
+  (notification, fake MPRIS player, offscreen Markdown) and re-tested after (#31–#33).
+  Remaining AutoText labels show our own strings or local data. The two "Audit test"
+  notifications from these tests are in the notification history.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
