@@ -378,3 +378,25 @@ Left-tab status on KWin: AI works (needs a provider key), Translator works
 is `kitty`), Tools works. YT Music needs `innertube-runtime.sh`/`innertube.py`
 and `python-ytmusicapi` (not installed) — pending a decision. Web Apps
 (plugins) is commented out upstream and has no tab.
+
+## Settings pages (phase 3, 2026-09-23)
+
+Each page is ported one at a time and waits for burningb95's OK. All use the
+theme tokens (`Appearance.colors.*`) and upstream's own widgets; every page gets
+a `PageResetFooter` (two clicks; "my setup" = `~/.config/pillbar/baseline.json`,
+"iNiR defaults" = `defaults/inir-factory-config.json`).
+
+| Page | Where | What it adds | Commit |
+|---|---|---|---|
+| 1 Pill | Bar › "Open Ricelin Pill settings" | Row order drag editor (`PillRowOrderEditor`, upstream BarModuleOrderEditor on `bar.pill.rowOrder`); clipboard history switch; Candy icons (enable + 2 opacities); Bar › Behavior: peek + duration; reset | `e07e86b` |
+| 2 Sidebars | Sidebars | Size (width / full·fit·fixed / height per sidebar); Arrange: left Widgets-tab order row; Right: Layout default/compact, bar-only avatar Choose/Default, "Shown toggles" chips (`hiddenTypes`, both styles); YT Music + Screen Time switches hidden on KWin; reset | `9285655` |
+
+Fixed on the way: `SidebarLayoutEditor` used `Array.isArray` on Config lists,
+so Arrange showed and wrote back the *default* order. Remaining
+`Array.isArray` uses on config values are in features the port doesn't use
+(Orbit shelf, desktop widgets) or on JSON-parsed strings (settings nav/chrome).
+
+Planned: 4 My palettes (Themes) · 5 game-mode KWin effects list · 6 global
+reset + hotkeys (settings = **Meta+Comma**, free; offer one for `pill peek`) ·
+7 notification popup timeouts (`notifications.{timeoutLow,timeoutCritical,
+ignoreAppTimeout,maxPopupLifetime}`). YT Music is dropped.
