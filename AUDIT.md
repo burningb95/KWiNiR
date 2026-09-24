@@ -16,12 +16,14 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 3 (efficiency): (1) inventory repeating timers (`tools/audit-inventory.py`) and
-classify each as must-stay / replaceable by a signal or file watch / idle when hidden;
-(2) check what keeps running while the sidebars are closed (sidebar Loaders, animations,
-YtMusic/other services instantiated at start that he doesn't use); (3) duplicate fetching;
-(4) measure idle CPU/RSS with `tools/measure-idle.sh 60` after the changes and compare
-with *Baseline*.
+Phase 4 (security): (1) the 64 `bash -c`/`sh -c` scripts from `tools/audit-inventory.py`
+(`shell` list) — flag any that interpolate outside data (notification text, window titles,
+SSIDs, file names, media metadata, config values) and convert to argument arrays; start with
+#12 (CustomWidgets `rm -rf`) and #1/#2 (fixed `/tmp` paths); (2) rich text: grep
+`textFormat` / `Text.RichText` / `StyledText` in notification, media and tooltip views;
+(3) IPC surface: list every target's functions and flag anything that runs commands or reads
+secrets; (4) secrets: AI/weather keys, `.gitignore`, permissions of `~/.config/pillbar`;
+(5) network: HTTPS-only, timeouts, failure handling.
 
 ## Plan
 
@@ -103,11 +105,34 @@ Measured with `tools/measure-idle.sh 60`, bar idle, bar process tree:
 | fresh start, sidebars never opened | 0.07 % | 426 MB | 262 MB | 6 |
 | after opening both sidebars once | 0.12 % | 680 MB | 500 MB | 6 |
 
+## After phase 3
+
+`tools/measure-idle.sh 90` now also counts **short-lived children** (reaped `gdbus`/`pgrep`
+spawns: kernel `cutime`/`cstime`), which the baseline couldn't see. With them included, the
+real pre-phase-3 cost was **0.50 %** fresh (0.12 % bar + 0.38 % spawns).
+
+| State | CPU incl. children, before → after | RSS | PSS | Processes |
+|---|---|---|---|---|
+| fresh start, sidebars never opened | 0.50 % → **0.04 %** | 429 MB | 268 MB | 6 |
+| after opening both sidebars once | ~0.30 % → **0.09 %** | 674 MB | 499 MB | 6 |
+
+Memory unchanged (sidebar content stays resident after first open — #4, needs approval).
+Idle process spawns: ~36/min → **0** (bridge polls in-process; recorder/EasyEffects polls gone).
+
+**Repeating timers that stay (justified):** `Ame.qml` 83/33 ms — the pill's idle breathing
+animation (animation values are off-limits; it is the motion the port exists for); DateTime
+60 s and Weather 60 s clock ticks (in-process, no I/O beyond `/proc/uptime`); KWin
+output/overview 5 s — KWin has **no change signal** for either (verified by introspection),
+now polled in the bridge without spawning; KWinService's own gdbus poll only as fallback;
+Weather fetch 10 min, Updates 120 min (network by nature). Everything else in the displayed
+modules is gated on its surface being open (sidebar/pill popups) or on a feature being on.
+
 ## Checklist
 
 | Area | Status |
 |---|---|
 | shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children, IPC) |
+| phase 3 efficiency: timers, spawns, closed-sidebar work, images | reviewed / fixed |
 | phase 2 robustness: Battery, BluetoothStatus, Audio, MprisController, Network, KWinService, Hyprsunset, Config | reviewed / fixed |
 | modules/common (Config, Appearance, Directories, Persistent, functions) | todo |
 | modules/common/widgets | todo |
@@ -147,6 +172,11 @@ needs approval.
 | 15 | M | services/YtMusic.qml:106 | `onAudioQualityChanged` wrote the config value it is bound to back to Config, so **every bar start rewrote `config.json`** (same values, different formatting; a write that can race external edits). Found by the config fault-injection test | fixed `93d75c7` (write only when different; verified byte-identical after restart) |
 | 16 | I | modules/pill/Pill.qml, JsonAdapter | config robustness: wrong types, junk list items, >4 dividers, deleted sections and unknown keys all fall back without a crash (warnings only); rowOrder never drops items | no action |
 | 17 | L | services/Hyprsunset.qml:195 | a non-numeric `light.night.colorTemperature` becomes 0 → clamped to 1000 K (very red) rather than the default | needs approval (fall back to default when < 1000); not runtime-tested — it would write kwinrc |
+| 18 | M | services/RecorderStatus.qml:138 | `pgrep -xo wf-recorder` every 5 s at idle; wf-recorder can't run on KWin (no wlr-screencopy — verified, it exits at once) and the pill records with Spectacle | fixed `e5bf95f` (poll off on KWin) |
+| 19 | M | services/deferred/EasyEffects.qml:212 | after the right sidebar's first open, `pgrep -x easyeffects` every 5 s for the rest of the session | fixed `62350c3` (poll only while the right sidebar is open, check on open) |
+| 20 | M | services/KWinService.qml:217 | 2 `gdbus call` spawns every 5 s (focused output + overview) — 0.38 % of a core, 3× the bar's own idle cost | fixed `3915a19` (same 5 s poll inside the bridge helper, reported every poll; gdbus poll kept as fallback; kill-test verified) |
+| 21 | M | modules/sidebarLeft/widgets/StatusRings.qml:14 | the left sidebar's window stays mapped when closed, so the CPU/RAM rings kept ResourceUsage polling `/proc` every 3 s forever after the first open | fixed `66b4b47` (monitor gated on `sidebarLeftOpen`; 15 s auto-stop verified) |
+| 22 | I | modules/pill/Ame.qml:332 | the pill's idle animation repaints its canvas 12×/s whenever the pill is visible, including under fullscreen windows | needs approval — optional: pause while game mode / a fullscreen window is up (changes nothing you'd see) |
 | 12 | M | services/CustomWidgets.qml:227,403 | widget create/remove build `rm -rf "…/${widgetId}"` shell strings from a name (injection pattern); only reachable from the hidden Desktop Widgets page | open (phase 4) |
 
 (Fixed before the audit began, for the record: Gowall `/tmp` PATH shims `104f6fb`, pill
@@ -183,5 +213,9 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   gets `QT_WAYLAND_RECONNECT=1` like plasmashell. Not exercised (would disrupt the session):
   KWin crash, plasmashell restart, sleep/resume, monitor hotplug — code review only; monitors
   now all self-restart (#13, #14), screens come from Quickshell `Variants` + `screenList`.
+- Phase 3: spawn sampler (`/proc` every 20 ms) + reaped-CPU measurement found the idle spawns
+  (#18, #20) and the post-sidebar pollers (#19, #21, bisected right vs left sidebar on staging).
+  Infinite animations in both sidebars are already gated on `sidebar*Open`. Left sidebar
+  banner: screen-sized async decode, released on close — fine.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
