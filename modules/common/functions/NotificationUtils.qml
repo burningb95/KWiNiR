@@ -85,6 +85,20 @@ Singleton {
         return Qt.formatDateTime(messageTime, "MMMM dd");
     }
 
+    /**
+     * KWin port: drop <img> tags whose source isn't local. Qt Quick's styled/rich text
+     * fetches http(s) images, so any app or website could make the bar load a remote image
+     * the moment a notification arrived (a read receipt / IP leak — verified with a local
+     * server). File paths, file:// and inline data:image sources still render.
+     */
+    function stripRemoteImages(text) {
+        return String(text ?? "").replace(/<img\b[^>]*>/gi, tag => {
+            const m = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+            const src = m ? String(m[1] ?? m[2] ?? m[3] ?? "").trim() : ""
+            return /^(file:|\/(?!\/)|data:image\/)/i.test(src) ? tag : ""
+        })
+    }
+
     function processNotificationBody(body, appName) {
         let processedBody = body
         
@@ -104,7 +118,7 @@ Singleton {
             }
         }
 
-        processedBody = processedBody.replace(/<img/gi, '\n\n<img');
+        processedBody = stripRemoteImages(processedBody).replace(/<img/gi, '\n\n<img');
         
         return processedBody
     }

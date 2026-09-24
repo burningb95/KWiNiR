@@ -7,6 +7,7 @@ import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Services.Notifications
 import qs.modules.common
+import qs.modules.common.functions
 import qs.services
 
 /**
@@ -271,7 +272,8 @@ PillSurface {
             anchors.right: nrowRight.left
             anchors.rightMargin: 8 * root.s
             anchors.verticalCenter: parent.verticalCenter
-            text: nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary
+            // KWin port: auto-detected styled text — strip remote images (see NotificationUtils).
+            text: NotificationUtils.stripRemoteImages(nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary)
             color: nrow.critical ? PillTheme.cream : PillTheme.subtle
             font.family: PillTheme.font
             font.pixelSize: 10.5 * root.s

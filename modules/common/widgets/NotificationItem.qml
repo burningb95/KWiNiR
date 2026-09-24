@@ -37,7 +37,8 @@ Item { // Notification item area
             || String(value).toLowerCase() === "critical"
     }
 
-    readonly property string notificationSummaryText: String(root.notificationObject?.summary ?? "")
+    // KWin port: summary renders as auto-detected styled text — no remote images (see NotificationUtils).
+    readonly property string notificationSummaryText: NotificationUtils.stripRemoteImages(root.notificationObject?.summary ?? "")
     readonly property bool hasNotificationActions: (root.notificationObject?.actions?.length ?? 0) > 0
     readonly property string processedNotificationBodyText: {
         if (!root.notificationObject) return ""
