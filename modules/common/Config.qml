@@ -187,7 +187,28 @@ Singleton {
         }
     }
 
+    // KWin port: settings controls write from onCheckedChanged/onValueChanged, which also fire
+    // when a page binds its initial values — opening a page rewrote config.json with the same
+    // values (and could race an edit made elsewhere). A plain value that already equals what
+    // the file holds is skipped; objects, lists and keys not yet in the file always write.
+    function _storedPrimitiveEquals(nestedKey, value): bool {
+        const t = typeof value;
+        if (t !== "boolean" && t !== "number" && t !== "string") return false;
+        const keys = Array.isArray(nestedKey) ? nestedKey : String(nestedKey).split(".");
+        if (keys.length === 0) return false;
+        if (keys.length >= 3 && keys[0] === "background" && keys[1] === "widgets"
+            && (keys[2] === "custom" || keys[2] === "mascotInstances")) return false;
+        let obj = root._jsonMirror;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (!obj || typeof obj !== "object" || !(keys[i] in obj)) return false;
+            obj = obj[keys[i]];
+        }
+        const last = keys[keys.length - 1];
+        return !!obj && typeof obj === "object" && (last in obj) && obj[last] === value;
+    }
+
     function setNestedValue(nestedKey, value) {
+        if (root._storedPrimitiveEquals(nestedKey, value)) return;
         _applyNestedKey(nestedKey, value);
         _applyToMirror(nestedKey, value);
         _recordPendingMutation(nestedKey, value);
@@ -434,6 +455,7 @@ Singleton {
     // while a write is in flight so reload() doesn't drop the write op.
     property bool _writeInFlight: false
     property bool _pendingWrite: false
+    property bool _initialLoadDone: false
     property bool _pendingCustomInject: false
     property bool _pendingMascotInject: false
     property bool _pendingReload: false
@@ -697,7 +719,17 @@ Singleton {
             if (root._rebasingExternalChange) {
                 root._rebasingExternalChange = false;
                 root._reapplyPendingMutations();
+            } else if (!root._initialLoadDone) {
+                // KWin port: writes made before the file was read come from controls binding
+                // their defaults (the settings window builds pages while this loads). The load
+                // has just replaced those values in memory; drop the queue too, or a later
+                // external change "rebases" by re-applying the stale defaults over the user's
+                // real settings, and the leftover pending write rewrites the file needlessly.
+                root._pendingMutations = ({});
+                root._pendingWrite = false;
+                fileWriteTimer.stop();
             }
+            root._initialLoadDone = true;
         }
         onLoadFailed: error => {
             if (error == FileViewError.FileNotFound) {
