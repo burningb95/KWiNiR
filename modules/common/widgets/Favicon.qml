@@ -16,8 +16,10 @@ IconImage {
     property string downloadUserAgent: Config.options?.networking.userAgent ?? ""
     property string faviconDownloadPath: Directories.favicons
     property string domainName: url.includes("vertexaisearch") ? displayText : StringUtils.getDomain(url)
-    property string faviconUrl: `https://www.google.com/s2/favicons?domain=${domainName}&sz=32`
-    property string fileName: `${domainName}.ico`
+    // KWin port: domainName can be AI-supplied display text, so encode it for the URL and keep
+    // path separators out of the cache file name.
+    property string faviconUrl: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domainName)}&sz=32`
+    property string fileName: `${domainName.replace(/[\/\x00]/g, "_")}.ico`
     property string faviconFilePath: `${faviconDownloadPath}/${fileName}`
     property string urlToLoad
 
@@ -29,7 +31,9 @@ IconImage {
         // without this the error page is cached as an .ico that the image
         // loader then fails to decode on every startup, forever, because the
         // [ -f ] guard never re-fetches it.
-        command: ["/usr/bin/bash", "-c", `[ -f ${faviconFilePath} ] || /usr/bin/curl -sfL --remove-on-error '${root.faviconUrl}' -o '${faviconFilePath}' -H 'User-Agent: ${downloadUserAgent}'`]
+        // KWin port: values go in as arguments, not spliced into the script (injection).
+        command: ["/usr/bin/bash", "-c", '[ -f "$2" ] || /usr/bin/curl -sfL --remove-on-error "$1" -o "$2" -H "User-Agent: $3"',
+            "bash", root.faviconUrl, root.faviconFilePath, root.downloadUserAgent]
         onExited: (exitCode, exitStatus) => {
             if (exitCode === 0) root.urlToLoad = root.faviconFilePath
         }
