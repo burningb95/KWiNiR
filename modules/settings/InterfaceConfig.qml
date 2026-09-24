@@ -1454,10 +1454,9 @@ ContentPage {
                     const tzs = Config.options?.sidebar?.widgets?.worldClock_settings?.timezones ?? []
                     if (tzs.length === 0) { liveTimes = ({}); return }
                     const fmt = (Config.options?.sidebar?.widgets?.worldClock_settings?.use24Hour ?? true) ? "%H:%M" : "%I:%M %p"
-                    let script = ""
-                    for (let i = 0; i < tzs.length; i++)
-                        script += `printf '%s|%s\\n' "${tzs[i]}" "$(TZ='${tzs[i]}' date '+${fmt}|%:z')"\n`
-                    liveTimeProc.command = ["/usr/bin/bash", "-c", script]
+                    // KWin port: timezones (config) go in as arguments, not spliced into the script.
+                    const script = 'fmt="$1"; shift; for tz in "$@"; do printf \'%s|%s\\n\' "$tz" "$(TZ="$tz" date "+$fmt|%:z")"; done'
+                    liveTimeProc.command = ["/usr/bin/bash", "-c", script, "bash", fmt].concat(Array.from(tzs).map(String))
                     liveTimeProc.running = true
                 }
 

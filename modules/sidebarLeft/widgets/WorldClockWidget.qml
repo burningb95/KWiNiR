@@ -94,12 +94,9 @@ Item {
             ? (showSeconds ? "%H:%M:%S" : "%H:%M")
             : (showSeconds ? "%I:%M:%S %p" : "%I:%M %p")
         // One shell pass: emit "tz|time|offset|date|doy|hour24" per line.
-        let script = ""
-        for (let i = 0; i < tzs.length; i++) {
-            const tz = tzs[i]
-            script += `printf '%s|%s\\n' "${tz}" "$(TZ='${tz}' date '+${timeFmt}|%:z|%a %d %b|%j|%H')"\n`
-        }
-        clockProcess.command = ["/usr/bin/bash", "-c", script]
+        // KWin port: timezones (config) go in as arguments, not spliced into the script.
+        const script = 'fmt="$1"; shift; for tz in "$@"; do printf \'%s|%s\\n\' "$tz" "$(TZ="$tz" date "+$fmt|%:z|%a %d %b|%j|%H")"; done'
+        clockProcess.command = ["/usr/bin/bash", "-c", script, "bash", timeFmt].concat(Array.from(tzs).map(String))
         clockProcess.running = true
     }
 
