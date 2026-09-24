@@ -16,9 +16,91 @@ Only files in this repo are touched; config is never reset.
 
 ## Next step
 
-Phase 5 (wrap-up): run the live bar and confirm zero new warnings; write the summary
-(fixed, numbers, Needs approval with recommendations, not verified); final commit;
-merge/rollback instructions.
+**Audit complete (2026-09-24).** Waiting on burningb95: review the branch, decide the
+*Needs approval* items, then merge or roll back (instructions at the end of *Summary*).
+
+## Summary (phase 5)
+
+**25 fixes** on `audit` (one commit each, plus AUDIT/doc commits), every one tested on
+staging before promotion and running live now. Final pass: live bar driven through all 12
+pill surfaces, both sidebars and the settings window, and every settings page rendered via
+the harness — **no new warnings**. What remains is pre-existing and listed below (#9 avatar
+SVG; #6; warnings on pages you've hidden). Your config is byte-identical to its pre-audit
+bytes (checked with `cmp` after every test that touched it).
+
+**Security (14 fixes).** Command injection from outside data: wallpaper **file names** (#23,
+reproduced), weather city (#24), AI favicon text (#25), booru API URLs + **path traversal**
+(#26), AI code-fence tag (#27), AI endpoint (#38), timezones (#28), palette JSON (#29),
+widget ids incl. an `rm -rf` target (#12). **Remote image loading** (read receipts / IP
+leaks), all reproduced against a local server then fixed: notifications (#31), media titles
+and device names (#32), AI replies — a prompt-injection exfiltration channel (#33).
+Private temp files out of shared `/tmp` (#1, #2). Timeouts (#39).
+
+**Bugs / robustness (6).** Orphaned child processes piling up and recording clipboard
+history after you'd switched it off (#7). KWin signal monitor never restarted (#13). nmcli
+monitor respawning ~250×/s when nmcli fails (#14). `config.json` rewritten on every start
+(#15). Settings window writing control defaults before the config loaded — could clobber
+real settings (#34). Two noisy log lines (#10, #11).
+
+**Efficiency (4).** Idle CPU incl. short-lived children **0.50 % → 0.04 %** fresh,
+**~0.30 % → 0.09 %** after opening both sidebars; idle process spawns ~36/min → 0
+(#18, #19, #20, #21). Memory unchanged (see #4).
+
+**Outside the repo (this session):** retired autostart entries moved to
+`~/.local/share/Fancy-Floating-Bar/autostart-disabled/` (a second bar and the old neon
+sidebar were starting at login); Latte's Meta+Comma binding cleared by you.
+
+### Needs approval — recommendations
+
+| # | What | Recommendation |
+|---|---|---|
+| 4 | sidebars keep ~250 MB resident after first open (upstream "resume where you left off") | **Leave** unless memory matters to you; unloading on close would make each open slower and lose scroll/tab state |
+| 5 | browser preset in settings also runs `xdg-settings set default-web-browser` | **Remove** the xdg-settings call — it changes a system default from a bar setting |
+| 6 | the settings window registers a second notification server that takes over if the bar dies while settings is open | **Fix**: don't start the server in the settings process (only matters if the bar crashes with settings open) |
+| 8 | upstream `pkill -f "nmcli monitor"` at start kills any matching process (it killed the audit's own shell) | **Remove** — #7 made it unnecessary |
+| 9 | your `avatar.svg` has malformed path data (2 warnings per start; renders fine) | **Clean** the SVG (your file — I'd only touch it with your OK) |
+| 17 | a non-numeric night-light temperature becomes 1000 K (very red) | **Fall back to 6000 K/default** when the value is invalid |
+| 22 | the pill's breathing animation repaints 12×/s under fullscreen windows too | **Pause** it while game mode/fullscreen is active (nothing visible changes) — optional |
+| 36 | hotspot password is iNiR's public default | **Set your own** before ever using the hotspot |
+| 37 | `~/.config/pillbar` config + backups are world-readable | **`chmod 600`** them (outside the repo) |
+| 40 | IP-location fallback `ip-api.com` is plain HTTP (unused with your manual city) | **Drop** it; ipwho.is (HTTPS) is already a fallback |
+| 3 | 11 IPC targets register only once their service loads | **Leave** — waking them would start iNiR's Autostart and self-updater |
+
+### Not verified (and why)
+
+- **KWin crash/restart, plasmashell restart, sleep/resume, monitor hotplug** — would disrupt
+  your session; reviewed in code only (all monitors now self-restart; `Restart=on-failure`;
+  `QT_WAYLAND_RECONNECT=1` like plasmashell).
+- **A real AI request** after #33/#38 — would spend your API quota; escaping was checked in
+  bash and rendering offscreen.
+- **Overview = true** path of #20 — would open Overview on your screen; same check as before.
+- **Settings window's own log** — its output isn't captured anywhere; pages checked via the
+  render harness instead (all 29 render; warnings only on hidden pages: Tools, Cheatsheet,
+  Niri, Mascot — pre-existing, niri/iNiR-only features).
+- **Booru/anime** fixes (#26) — that tab is hidden for you (`policies.weeb: 0`); logic unit-tested.
+
+### Review, merge, roll back
+
+The live tree **is** the repo and is checked out on `audit`, so the bar you're running now
+*is* the audited code. Nothing has been pushed.
+
+```sh
+cd ~/.config/quickshell/pillbar
+git log --oneline main..audit            # every commit, one fix each
+git diff --stat main..audit              # files touched
+git show <hash>                          # one fix in full
+
+# accept it all:
+git checkout main && git merge --ff-only audit && git push
+
+# drop one fix, keep the rest (on audit, before merging):
+git revert <hash> && systemctl --user restart pillbar
+
+# roll back the whole audit:
+git checkout main && systemctl --user restart pillbar
+rsync -a --delete --exclude .git --exclude _harness.qml ~/.config/quickshell/pillbar/ \
+      ~/.local/share/Fancy-Floating-Bar/staging/pillbar/   # keep staging in step
+```
 
 ## Plan
 
@@ -127,6 +209,7 @@ modules is gated on its surface being open (sidebar/pill popups) or on a feature
 | Area | Status |
 |---|---|
 | shell.qml, settings.qml, GlobalStates.qml | reviewed (warnings, children, IPC) |
+| phase 5 wrap-up: final warnings pass, summary | done |
 | phase 4 security: shell strings, rich text, IPC, secrets, network, temp files | reviewed / fixed |
 | phase 3 efficiency: timers, spawns, closed-sidebar work, images | reviewed / fixed |
 | phase 2 robustness: Battery, BluetoothStatus, Audio, MprisController, Network, KWinService, Hyprsunset, Config | reviewed / fixed |
@@ -199,7 +282,7 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
 
 ## Needs approval
 
-(See findings marked "needs approval"; recommendations are added in phase 5.)
+See *Summary → Needs approval — recommendations* above.
 
 ## Log
 
@@ -249,5 +332,7 @@ toast rich text `9be3225`, theming guards `6c5ed14`.)
   Chasing a config write seen at 09:19 found #34 (the settings harness and the settings
   window write the same way). Every config test restored the original bytes (`cmp`).
 - Phase 4 (5)(6): network (#38–#41) and temp files (#1, #2). Phase 4 complete.
+- Phase 5: live pass (12 pill surfaces, both sidebars, settings window) → no warnings;
+  29 settings pages rendered → warnings only on hidden niri/iNiR pages + #6. Summary written.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
