@@ -1402,8 +1402,15 @@ Singleton {
                (e.g. get_shell_config output), killing the request silently. */
             let scriptRequestContent = ""
             const curlStatusToken = String.fromCharCode(37) + "{http_code}"
+            // KWin port: the endpoint sits in double quotes so the Gemini key token
+            // (${API_KEY}) expands; escape everything else that double quotes would still
+            // expand ($(...), backticks) — endpoints can come from a refreshed model catalog.
+            // --connect-timeout (not --max-time): replies stream for as long as they take.
+            const keyToken = "${" + root.apiKeyEnvVarName + "}"
+            const safeEndpoint = String(endpoint).replace(/[\\"`$]/g, c => "\\" + c)
+                .split("\\" + keyToken).join(keyToken)
             scriptRequestContent += `printf '%s' '${CF.StringUtils.shellSingleQuoteEscape(JSON.stringify(data))}'`
-                + ` | curl -sS --no-buffer "${endpoint}"`
+                + ` | curl -sS --no-buffer --connect-timeout 15 "${safeEndpoint}"`
                 + ` ${headerString}`
                 + (authHeader ? ` ${authHeader}` : "")
                 + ` --data @-`
