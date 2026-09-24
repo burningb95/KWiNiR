@@ -672,36 +672,6 @@ Item {
                         }
                     }
 
-                    // KWin port: edit-mode controls — remove (top-left), size chip (left of the grip)
-                    Row {
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        anchors.topMargin: 2
-                        anchors.leftMargin: widgetWrapper.isSpacer || widgetWrapper.placeholder ? 16 : 4
-                        spacing: 4
-                        z: 30
-                        visible: opacity > 0
-                        opacity: root.arranging && !widgetWrapper.isBeingDragged ? 1 : 0
-                        Behavior on opacity {
-                            enabled: Appearance.animationsEnabled
-                            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-                        }
-
-                        EditChip {
-                            glyph: "close"
-                            tipText: widgetWrapper.isSpacer ? Translation.tr("Remove spacer") : Translation.tr("Hide")
-                            onClicked: root.removeItem(widgetWrapper.modelData)
-                        }
-                        EditChip {
-                            visible: !widgetWrapper.isSpacer
-                            glyph: widgetWrapper.sizeMode === "fill" ? "height" : widgetWrapper.sizeMode === "tall" ? "expand" : "check_indeterminate_small"
-                            label: widgetWrapper.sizeMode === "fill" ? Translation.tr("Fill")
-                                 : widgetWrapper.sizeMode === "tall" ? Translation.tr("Tall") : Translation.tr("Normal")
-                            tipText: Translation.tr("Size: click to cycle Normal → Tall → Fill")
-                            onClicked: root.cycleSize(widgetWrapper.modelData)
-                        }
-                    }
-
                     // Hover detector covering the whole widget to reveal the grip button
                     HoverHandler {
                         id: handleHoverDetector
@@ -770,6 +740,38 @@ Item {
                             const globalY = dragArea.mapToItem(column, dragArea.mouseX, dragArea.mouseY).y
                             root.startDrag(widgetWrapper.index, globalY)
                         }
+                    }
+                }
+
+                // KWin port: edit-mode controls — remove (top-left), size chip. A direct child of the
+                // delegate so its z sits above dragArea (z 15); inside contentContainer the drag
+                // layer swallowed every click. Declared after dragArea too, so declaration order agrees.
+                Row {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.topMargin: 2
+                    anchors.leftMargin: widgetWrapper.isSpacer || widgetWrapper.placeholder ? 16 : 4
+                    spacing: 4
+                    z: 30
+                    visible: opacity > 0
+                    opacity: root.arranging && !widgetWrapper.isBeingDragged ? 1 : 0
+                    Behavior on opacity {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                    }
+
+                    EditChip {
+                        glyph: "close"
+                        tipText: widgetWrapper.isSpacer ? Translation.tr("Remove spacer") : Translation.tr("Hide")
+                        onClicked: root.removeItem(widgetWrapper.modelData)
+                    }
+                    EditChip {
+                        visible: !widgetWrapper.isSpacer
+                        glyph: widgetWrapper.sizeMode === "fill" ? "height" : widgetWrapper.sizeMode === "tall" ? "expand" : "check_indeterminate_small"
+                        label: widgetWrapper.sizeMode === "fill" ? Translation.tr("Fill")
+                             : widgetWrapper.sizeMode === "tall" ? Translation.tr("Tall") : Translation.tr("Normal")
+                        tipText: Translation.tr("Size: click to cycle Normal → Tall → Fill")
+                        onClicked: root.cycleSize(widgetWrapper.modelData)
                     }
                 }
             }
