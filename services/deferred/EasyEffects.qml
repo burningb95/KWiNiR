@@ -1,6 +1,7 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 
+import qs
 import qs.modules.common
 import QtQuick
 import Quickshell
@@ -209,11 +210,14 @@ Singleton {
         onTriggered: root.fetchActiveState()
     }
 
+    // KWin port: poll only while the right sidebar (the only place showing this state) is
+    // open, checking at once on open; it used to run a pgrep every 5 s forever after first use.
     Timer {
         id: statePollTimer
         interval: 5000
         repeat: true
-        running: Config.ready && root.available
+        triggeredOnStart: true
+        running: Config.ready && root.available && GlobalStates.sidebarRightOpen
         onTriggered: root.fetchActiveState()
     }
 
