@@ -455,3 +455,14 @@ Traps hit building these (all fixed):
 - A Loader's `height: undefined` after an explicit height didn't reset → overlap. Bind always.
 - Settings controls write on init (`onCheckedChanged`); Config skips equal plain values, and
   list writes must compare first (see `InterfaceConfig` *Sizes & spacing*).
+
+## Pill status cluster: wifi + inbox hidden (2026-09-24)
+
+He doesn't want the wifi signal icon or the notification bell taking up space in the top
+pill (same preference already applied to the left sidebar's Controls card, above). Pure
+config, no QML touched: `modules/pill/Pill.qml:1070` (`wifiIcon`) and `:1176` (`inboxIcon`,
+the bell) are each gated on `pill.hoverModules?.wifi` / `?.inbox`, which read
+`Config.options.bar.pill.modules`. Set `wifi: false` and `inbox: false` there
+(`~/.config/pillbar/config.json`) and restarted the service. Undo: flip both back to `true`
+and restart, or restore `backups/config-before-hide-wifi-inbox-1790280239.json` from the bar
+repo. Other pill items (battery, weather, tray, mixer, power, sidebars, workspaces) untouched.
