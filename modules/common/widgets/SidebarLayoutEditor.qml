@@ -20,6 +20,33 @@ ColumnLayout {
     readonly property var rightDefaultOrder: ["system", "sliders", "toggles", "notifications", "widgets"]
     readonly property var leftDefaultOrder: ["widgets", "ai", "translator", "anime", "animeSchedule", "wallhaven", "news", "ytmusic", "tools", "software"]
 
+    // KWin port: the left sidebar's Widgets-tab stack (sidebar.widgets.widgetOrder),
+    // same defaults as DraggableWidgetContainer. On/off lives on Panels > Sidebar.
+    readonly property var widgetsDefaultOrder: ["media", "week", "context", "note", "launch", "controls", "status", "crypto", "wallpaper", "worldclock"]
+    readonly property var widgetsDescriptors: ({
+        media: { icon: "music_note", label: Translation.tr("Media"), key: "media", on: true },
+        week: { icon: "date_range", label: Translation.tr("Week"), key: "week", on: true },
+        context: { icon: "wb_sunny", label: Translation.tr("Context"), key: "context", on: true },
+        note: { icon: "sticky_note_2", label: Translation.tr("Note"), key: "note", on: true },
+        launch: { icon: "rocket_launch", label: Translation.tr("Quick launch"), key: "launch", on: true },
+        controls: { icon: "tune", label: Translation.tr("Controls"), key: "controls", on: true },
+        status: { icon: "donut_large", label: Translation.tr("Status rings"), key: "status", on: true },
+        crypto: { icon: "currency_bitcoin", label: Translation.tr("Crypto"), key: "crypto", on: false },
+        wallpaper: { icon: "wallpaper", label: Translation.tr("Wallpaper"), key: "wallpaper", on: false },
+        worldclock: { icon: "schedule", label: Translation.tr("World clock"), key: "worldClock", on: true }
+    })
+    readonly property var widgetsOrder: {
+        root.configVersion
+        return root.sanitizeOrder(
+            Config.options?.sidebar?.widgets?.widgetOrder ?? root.widgetsDefaultOrder,
+            root.widgetsDefaultOrder)
+    }
+    function widgetEnabled(id: string): bool {
+        root.configVersion
+        const d = root.widgetsDescriptors[id]
+        return d ? (Config.options?.sidebar?.widgets?.[d.key] ?? d.on) : false
+    }
+
     readonly property var rightDescriptors: ({
         system: { icon: "computer", label: Translation.tr("System") },
         sliders: { icon: "tune", label: Translation.tr("Sliders") },
@@ -64,7 +91,10 @@ ColumnLayout {
 
     function sanitizeOrder(saved, defaults): var {
         const result = []
-        const source = Array.isArray(saved) ? saved : defaults
+        // KWin port: Config lists are QML list<string>, not JS arrays under Qt 6, so
+        // Array.isArray() was always false here and the saved order was ignored
+        // (and the default order written back on the next move).
+        const source = (saved && typeof saved.length === "number") ? Array.from(saved) : defaults
         for (let i = 0; i < source.length; i++) {
             const id = source[i]
             if (defaults.includes(id) && !result.includes(id)) result.push(id)
@@ -90,7 +120,7 @@ ColumnLayout {
     }
 
     function place(kind: string, insertPosition: int): void {
-        const order = kind === "right" ? [...rightOrder] : [...leftOrder]
+        const order = kind === "right" ? [...rightOrder] : kind === "widgets" ? [...widgetsOrder] : [...leftOrder]
         const from = order.indexOf(liftedId)
         if (liftedKind !== kind || from < 0) {
             cancelLift()
@@ -101,8 +131,8 @@ ColumnLayout {
         if (target > from) target--
         target = Math.max(0, Math.min(target, order.length))
         order.splice(target, 0, moved)
-        Config.setNestedValue(kind === "right"
-            ? "sidebar.right.sectionOrder" : "sidebar.left.tabOrder", order)
+        Config.setNestedValue(kind === "right" ? "sidebar.right.sectionOrder"
+            : kind === "widgets" ? "sidebar.widgets.widgetOrder" : "sidebar.left.tabOrder", order)
         cancelLift()
     }
 
@@ -371,6 +401,103 @@ ColumnLayout {
                     active: root.liftedKind === "left"
                         && root.leftOrder[root.leftOrder.length - 1] !== root.liftedId
                     onPlaced: root.place("left", root.leftOrder.length)
+                }
+            }
+        }
+    }
+
+    // ─── KWin port: left sidebar Widgets-tab order ─────────────────────
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: 1
+        color: Appearance.colors.colOutlineVariant
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 8
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            StyledText {
+                text: Translation.tr("Left sidebar widgets")
+                font.pixelSize: Appearance.font.pixelSize.normal
+                font.weight: Font.Medium
+                color: Appearance.colors.colOnLayer1
+            }
+            StyledText {
+                Layout.fillWidth: true
+                text: Translation.tr("Stack order of the Widgets tab. Faded widgets are switched off (Panels › Sidebar) and keep their place.")
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        RippleButtonWithIcon {
+            materialIcon: "restart_alt"
+            mainText: Translation.tr("Reset")
+            onClicked: {
+                Config.setNestedValue("sidebar.widgets.widgetOrder", root.widgetsDefaultOrder)
+                root.cancelLift()
+            }
+        }
+    }
+
+    Item {
+        Layout.fillWidth: true
+        implicitHeight: 44
+
+        Flickable {
+            anchors.fill: parent
+            contentWidth: widgetsOrderRow.implicitWidth
+            contentHeight: height
+            clip: true
+            interactive: contentWidth > width
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.HorizontalFlick
+
+            Row {
+                id: widgetsOrderRow
+                height: parent.height
+                spacing: 6
+
+                Repeater {
+                    model: root.widgetsOrder
+                    delegate: Row {
+                        id: widgetDelegate
+                        required property string modelData
+                        required property int index
+                        height: widgetsOrderRow.height
+                        spacing: 6
+                        readonly property var descriptor: root.widgetsDescriptors[modelData]
+
+                        ArrangeDropSlot {
+                            anchors.verticalCenter: parent.verticalCenter
+                            active: root.liftedKind === "widgets"
+                                && !(root.liftedId === widgetDelegate.modelData
+                                    || (widgetDelegate.index > 0
+                                        && root.widgetsOrder[widgetDelegate.index - 1] === root.liftedId))
+                            onPlaced: root.place("widgets", widgetDelegate.index)
+                        }
+                        ArrangeChip {
+                            anchors.verticalCenter: parent.verticalCenter
+                            opacity: root.widgetEnabled(widgetDelegate.modelData) ? 1 : 0.45
+                            icon: widgetDelegate.descriptor?.icon ?? "widgets"
+                            label: widgetDelegate.descriptor?.label ?? widgetDelegate.modelData
+                            lifted: root.liftedKind === "widgets" && root.liftedId === widgetDelegate.modelData
+                            dimmed: root.liftedKind.length > 0 && !lifted
+                            onTapped: root.toggleLift("widgets", widgetDelegate.modelData)
+                        }
+                    }
+                }
+
+                ArrangeDropSlot {
+                    anchors.verticalCenter: parent.verticalCenter
+                    active: root.liftedKind === "widgets"
+                        && root.widgetsOrder[root.widgetsOrder.length - 1] !== root.liftedId
+                    onPlaced: root.place("widgets", root.widgetsOrder.length)
                 }
             }
         }

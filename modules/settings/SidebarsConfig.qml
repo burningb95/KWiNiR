@@ -221,6 +221,62 @@ ContentPage {
             }
 
 
+            // KWin port: sidebar.shellLayout sizes. Upstream edits these only in its
+            // live Shell Layout editor (needs scripts); plain controls here.
+            ContentSubsection {
+                title: Translation.tr("Size")
+                tooltip: Translation.tr("Width 320–900 px. Height: full screen, fit to content, or a fixed height.")
+
+                Repeater {
+                    model: [
+                        { role: "feature", label: Translation.tr("Left sidebar") },
+                        { role: "system", label: Translation.tr("Right sidebar") }
+                    ]
+                    ColumnLayout {
+                        id: sizeRow
+                        required property var modelData
+                        readonly property string base: "sidebar.shellLayout." + modelData.role
+                        readonly property var cfg: Config.options?.sidebar?.shellLayout?.[modelData.role]
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        ContentSubsectionLabel { text: sizeRow.modelData.label }
+                        ConfigRow {
+                            uniform: true
+                            ConfigSpinBox {
+                                icon: "width"
+                                text: Translation.tr("Width (px)")
+                                value: sizeRow.cfg?.width ?? 460
+                                from: 320
+                                to: 900
+                                stepSize: 10
+                                onValueChanged: Config.setNestedValue(sizeRow.base + ".width", value)
+                            }
+                            ConfigSpinBox {
+                                icon: "height"
+                                text: Translation.tr("Fixed height (px)")
+                                enabled: (sizeRow.cfg?.sizeMode ?? "full") === "custom"
+                                value: sizeRow.cfg?.customHeight ?? 720
+                                from: 320
+                                to: 2160
+                                stepSize: 20
+                                onValueChanged: Config.setNestedValue(sizeRow.base + ".customHeight", value)
+                            }
+                        }
+                        ConfigSelectionArray {
+                            Layout.fillWidth: false
+                            currentValue: sizeRow.cfg?.sizeMode ?? "full"
+                            onSelected: newValue => Config.setNestedValue(sizeRow.base + ".sizeMode", newValue)
+                            options: [
+                                { displayName: Translation.tr("Full height"), icon: "height", value: "full" },
+                                { displayName: Translation.tr("Fit content"), icon: "fit_screen", value: "fit" },
+                                { displayName: Translation.tr("Fixed"), icon: "straighten", value: "custom" }
+                            ]
+                        }
+                    }
+                }
+            }
+
             ContentSubsection {
                 title: Translation.tr("Arrange")
                 tooltip: Translation.tr("Arrange sidebar sections, tab order and elastic heights")
@@ -350,6 +406,8 @@ ContentPage {
                 }
 
                 SettingsSwitch {
+                    // KWin port: YT Music is dropped here (runtime not shipped); config kept.
+                    visible: !CompositorService.isKWin
                     buttonIcon: "library_music"
                     text: Translation.tr("YT Music")
                     checked: Config.options.sidebar?.ytmusic?.enable ?? false
@@ -386,6 +444,20 @@ ContentPage {
         title: Translation.tr("Right sidebar")
 
         SettingsGroup {
+            // KWin port: sidebar.layout had no control on any page.
+            ContentSubsection {
+                title: Translation.tr("Layout")
+                ConfigSelectionArray {
+                    Layout.fillWidth: false
+                    currentValue: Config.options?.sidebar?.layout ?? "default"
+                    onSelected: newValue => Config.setNestedValue("sidebar.layout", newValue)
+                    options: [
+                        { displayName: Translation.tr("Default"), icon: "view_agenda", value: "default" },
+                        { displayName: Translation.tr("Compact"), icon: "view_compact", value: "compact" }
+                    ]
+                }
+            }
+
             ContentSubsection {
                 title: Translation.tr("Right sidebar header")
                 tooltip: Translation.tr("Look of the system section at the top of the right sidebar")
@@ -466,7 +538,12 @@ ContentPage {
 
                     StyledText {
                         Layout.fillWidth: true
-                        text: Translation.tr("Manage my account")
+                        // KWin port: show the bar-only picture path when one is set.
+                        text: CompositorService.isKWin
+                            ? ((Config.options?.sidebar?.right?.avatarPath ?? "").length > 0
+                                ? Config.options.sidebar.right.avatarPath
+                                : Translation.tr("Default (~/.config/pillbar/avatar)"))
+                            : Translation.tr("Manage my account")
                         font.pixelSize: Appearance.font.pixelSize.small
                         color: Appearance.colors.colSubtext
                         elide: Text.ElideMiddle
@@ -477,6 +554,20 @@ ContentPage {
                         materialIcon: "folder_open"
                         mainText: Translation.tr("Choose")
                         onClicked: profileAvatarDialog.open()
+                        StyledToolTip {
+                            visible: CompositorService.isKWin && parent.hovered
+                            text: Translation.tr("Picture for this bar only. Your system account picture is not changed.")
+                        }
+                    }
+
+                    RippleButtonWithIcon {
+                        visible: CompositorService.isKWin && (Config.options?.sidebar?.right?.avatarPath ?? "").length > 0
+                        materialIcon: "undo"
+                        mainText: Translation.tr("Default")
+                        onClicked: {
+                            Config.setNestedValue("sidebar.right.avatarPath", "")
+                            Directories.userAvatarRevision++
+                        }
                     }
 
                     RippleButtonWithIcon {
@@ -495,7 +586,15 @@ ContentPage {
                         Translation.tr("All files") + " (*)"
                     ]
                     onAccepted: {
-                        root.pendingProfileAvatarPath = FileUtils.trimFileProtocol(String(selectedFile))
+                        const picked = FileUtils.trimFileProtocol(String(selectedFile))
+                        // KWin port: set-avatar.sh (system account picture) isn't shipped;
+                        // the pick becomes the bar-only sidebar.right.avatarPath.
+                        if (CompositorService.isKWin) {
+                            Config.setNestedValue("sidebar.right.avatarPath", picked)
+                            Directories.userAvatarRevision++
+                            return
+                        }
+                        root.pendingProfileAvatarPath = picked
                         setProfileAvatarProcess.running = true
                     }
                 }
@@ -671,6 +770,8 @@ ContentPage {
                 }
 
                 SettingsSwitch {
+                    // KWin port: needs per-window focus data KWin doesn't expose to Quickshell.
+                    visible: !CompositorService.isKWin
                     buttonIcon: "av_timer"
                     text: Translation.tr("Screen Time")
                     Component.onCompleted: checked = rightSidebarWidgets.isEnabled("screentime")
@@ -694,6 +795,55 @@ ContentPage {
                         { displayName: Translation.tr("Classic"), icon: "password_2", value: "classic" },
                         { displayName: Translation.tr("Android"), icon: "action_key", value: "android" }
                     ]
+                }
+
+                // KWin port: sidebar.quickToggles.hiddenTypes, for either style.
+                ContentSubsectionLabel {
+                    text: Translation.tr("Shown toggles")
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Tap to hide or show. Marked * do nothing on KWin.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    readonly property var hidden: Array.from(Config.options?.sidebar?.quickToggles?.hiddenTypes ?? [])
+                    readonly property var inertOnKWin: ["nightLight", "darkMode", "colorPicker", "onScreenKeyboard", "cloudflareWarp"]
+                    readonly property var types: (Config.options?.sidebar?.quickToggles?.style ?? "classic") === "android"
+                        ? ["network", "hotspot", "bluetooth", "idleInhibitor", "easyEffects", "nightLight", "darkMode", "cloudflareWarp",
+                           "gameMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "notifications",
+                           "powerProfile", "musicRecognition", "voiceSearch", "antiFlashbang"]
+                        : ["network", "hotspot", "bluetooth", "nightLight", "easyEffects", "idleInhibitor", "gameMode", "cloudflareWarp"]
+                    readonly property var labels: ({
+                        network: Translation.tr("Network"), hotspot: Translation.tr("Hotspot"), bluetooth: Translation.tr("Bluetooth"),
+                        idleInhibitor: Translation.tr("Caffeine"), easyEffects: Translation.tr("EasyEffects"), nightLight: Translation.tr("Night light"),
+                        darkMode: Translation.tr("Dark mode"), cloudflareWarp: Translation.tr("WARP"), gameMode: Translation.tr("Game mode"),
+                        screenSnip: Translation.tr("Screen snip"), colorPicker: Translation.tr("Color picker"),
+                        onScreenKeyboard: Translation.tr("Keyboard"), mic: Translation.tr("Microphone"), audio: Translation.tr("Audio"),
+                        notifications: Translation.tr("Do not disturb"), powerProfile: Translation.tr("Power profile"),
+                        musicRecognition: Translation.tr("Song ID"), voiceSearch: Translation.tr("Voice search"),
+                        antiFlashbang: Translation.tr("Anti-flashbang")
+                    })
+                    Repeater {
+                        model: parent.types
+                        FilterChip {
+                            required property string modelData
+                            readonly property var flow: parent
+                            selected: !flow.hidden.includes(modelData)
+                            chipIcon: selected ? "check" : "visibility_off"
+                            text: (flow.labels[modelData] ?? modelData)
+                                + (CompositorService.isKWin && flow.inertOnKWin.includes(modelData) ? " *" : "")
+                            onClicked: {
+                                const h = flow.hidden.filter(t => t !== modelData)
+                                if (selected) h.push(modelData)
+                                Config.setNestedValue("sidebar.quickToggles.hiddenTypes", h)
+                            }
+                        }
+                    }
                 }
 
                 ConfigSpinBox {
@@ -1176,5 +1326,11 @@ ContentPage {
     }
         }
     }
-
+    // KWin port: per-page reset. "sidebar" also covers the Widgets-tab switches
+    // shown on Panels > Sidebar.
+    PageResetFooter {
+        Layout.fillWidth: true
+        scope: ["sidebar"]
+        description: Translation.tr("Puts every sidebar option back: layout, sizes, tabs, widgets, toggles, header and opening.")
+    }
 }
