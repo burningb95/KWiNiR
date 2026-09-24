@@ -151,3 +151,4 @@ ZzzGlyphBadge 1.0 ZzzGlyphBadge.qml
 ZzzDiagonalPattern 1.0 ZzzDiagonalPattern.qml
 ZzzGraphicPlate 1.0 ZzzGraphicPlate.qml
 ZzzStatBar 1.0 ZzzStatBar.qml
+PillRowOrderEditor 1.0 PillRowOrderEditor.qml

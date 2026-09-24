@@ -441,6 +441,17 @@ ColumnLayout {
                 Item { visible: index * 2 + 1 >= root.surfaceDescriptors.length; Layout.fillWidth: visible }
             }
         }
+
+        // KWin port: nothing feeds cliphist on Plasma; the bar runs the watcher.
+        SettingsSwitch {
+            buttonIcon: "history"
+            text: Translation.tr("Save clipboard history")
+            checked: Config.options?.clipboard?.historyWatcher ?? true
+            onCheckedChanged: Config.setNestedValue("clipboard.historyWatcher", checked)
+            StyledToolTip {
+                text: Translation.tr("Runs wl-paste --watch cliphist store while the bar is up, so the Clipboard face has history on Plasma. Password-manager copies are skipped.")
+            }
+        }
     }
 
     ContentSubsection {
@@ -487,6 +498,15 @@ ColumnLayout {
                 { displayName: Translation.tr("Both"), icon: "battery_full", value: "both" }
             ]
         }
+    }
+
+    // KWin port: bar.pill.rowOrder, edited with upstream's drag/drop layout editor.
+    ContentSubsection {
+        settingsTaskSection: "content"
+        visible: root.activeSection === "content"
+        title: Translation.tr("Row order")
+
+        PillRowOrderEditor {}
     }
 
     ContentSubsection {
@@ -577,6 +597,51 @@ ColumnLayout {
         }
     }
 
+    // KWin port: the bar-only candy-icons layer (appearance.candy).
+    ContentSubsection {
+        settingsTaskSection: "clock"
+        visible: root.activeSection === "clock"
+        title: Translation.tr("Candy icons")
+
+        StyledText {
+            Layout.fillWidth: true
+            text: Translation.tr("Draws the pill's and sidebars' glyphs from candy-icons instead of Material Symbols. Only this bar is affected; your desktop icon theme stays as it is.")
+            color: Appearance.colors.colSubtext
+            font.pixelSize: Appearance.font.pixelSize.small
+            wrapMode: Text.WordWrap
+        }
+        SettingsSwitch {
+            buttonIcon: "palette"
+            text: Translation.tr("Use candy icons")
+            checked: Config.options?.appearance?.candy?.enable ?? true
+            onCheckedChanged: Config.setNestedValue("appearance.candy.enable", checked)
+        }
+        ConfigRow {
+            uniform: true
+            enabled: Config.options?.appearance?.candy?.enable ?? true
+            ConfigSpinBox {
+                icon: "opacity"
+                text: Translation.tr("Resting opacity (%)")
+                value: Math.round((Config.options?.appearance?.candy?.idleOpacity ?? 0.8) * 100)
+                from: 30
+                to: 100
+                stepSize: 5
+                onValueChanged: Config.setNestedValue("appearance.candy.idleOpacity", value / 100)
+                StyledToolTip { text: Translation.tr("Pill glyphs while not hovered.") }
+            }
+            ConfigSpinBox {
+                icon: "opacity"
+                text: Translation.tr("Status icons (%)")
+                value: Math.round((Config.options?.appearance?.candy?.statusIdleOpacity ?? 0.82) * 100)
+                from: 30
+                to: 100
+                stepSize: 1
+                onValueChanged: Config.setNestedValue("appearance.candy.statusIdleOpacity", value / 100)
+                StyledToolTip { text: Translation.tr("Wi-Fi, battery, bell and the other status icons while not hovered.") }
+            }
+        }
+    }
+
     ContentSubsection {
         settingsTaskSection: "advanced"
         visible: root.activeSection === "advanced"
@@ -651,5 +716,73 @@ ColumnLayout {
             ]
         }
     }
+    }
+
+    // KWin port: per-page reset. Scope = everything this page (and the Bar
+    // page's peek control) edits. Two clicks: the first arms it for 4 s.
+    readonly property var resetScope: ["bar.pill", "bar.autoHide.peek", "appearance.candy", "clipboard.historyWatcher"]
+    property string resetArmed: ""   // "", "baseline" or "factory"
+    property string resetResult: ""
+    function resetPage(source: string): void {
+        if (root.resetArmed !== source) {
+            root.resetArmed = source
+            resetArmTimer.restart()
+            return
+        }
+        root.resetArmed = ""
+        let n = 0
+        for (const p of root.resetScope) n += Math.max(0, Config.resetPath(p, source))
+        root.resetResult = Translation.tr("Reset %1 values").arg(n)
+    }
+    Timer { id: resetArmTimer; interval: 4000; onTriggered: root.resetArmed = "" }
+
+    ContentSubsection {
+        title: Translation.tr("Reset")
+
+        StyledText {
+            Layout.fillWidth: true
+            text: root.resetResult.length > 0 ? root.resetResult
+                : Translation.tr("Puts every Pill option back. \"My setup\" is your saved baseline; \"iNiR defaults\" is the shipped configuration.")
+            color: Appearance.colors.colSubtext
+            font.pixelSize: Appearance.font.pixelSize.small
+            wrapMode: Text.WordWrap
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Repeater {
+                model: [
+                    { source: "baseline", label: Translation.tr("Reset to my setup"), icon: "restart_alt" },
+                    { source: "factory", label: Translation.tr("Reset to iNiR defaults"), icon: "settings_backup_restore" }
+                ]
+                RippleButton {
+                    id: resetButton
+                    required property var modelData
+                    readonly property bool armed: root.resetArmed === modelData.source
+                    Layout.fillWidth: true
+                    implicitHeight: 36
+                    buttonRadius: Appearance.zzzEverywhere ? Appearance.zzz.controlRadius : Appearance.rounding.small
+                    colBackground: armed ? Appearance.colors.colErrorContainer : Appearance.colors.colLayer1
+                    colBackgroundHover: armed ? Appearance.colors.colErrorContainer : Appearance.colors.colLayer1Hover
+                    colRipple: Appearance.colors.colLayer1Active
+                    onClicked: root.resetPage(modelData.source)
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        MaterialSymbol {
+                            text: resetButton.armed ? "warning" : resetButton.modelData.icon
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: resetButton.armed ? Appearance.colors.colOnErrorContainer : Appearance.colors.colOnSurface
+                        }
+                        StyledText {
+                            text: resetButton.armed ? Translation.tr("Click again to reset") : resetButton.modelData.label
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: resetButton.armed ? Appearance.colors.colOnErrorContainer : Appearance.colors.colOnSurface
+                        }
+                    }
+                }
+            }
+        }
     }
 }

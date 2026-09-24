@@ -1993,6 +1993,33 @@ ContentPage {
                 }
             }
 
+            // KWin port: `qs -c pillbar ipc call pill peek` stands in for
+            // upstream's reveal-while-Super-is-held (Hyprland-only).
+            ConfigRow {
+                uniform: true
+                visible: root.barAppearance === "pill"
+
+                SettingsSwitch {
+                    buttonIcon: "visibility"
+                    text: Translation.tr("Peek on shortcut")
+                    checked: Config.options?.bar?.autoHide?.peek?.enable ?? true
+                    onCheckedChanged: Config.setNestedValue("bar.autoHide.peek.enable", checked)
+                    StyledToolTip {
+                        text: Translation.tr("KWin can't report a held Super key, so a shortcut bound to \"qs -c pillbar ipc call pill peek\" opens the Pill for a moment instead, even while auto-hidden.")
+                    }
+                }
+                ConfigSpinBox {
+                    icon: "timer"
+                    text: Translation.tr("Peek duration (ms)")
+                    enabled: Config.options?.bar?.autoHide?.peek?.enable ?? true
+                    value: Config.options?.bar?.autoHide?.peek?.durationMs ?? 2000
+                    from: 300
+                    to: 10000
+                    stepSize: 100
+                    onValueChanged: Config.setNestedValue("bar.autoHide.peek.durationMs", value)
+                }
+            }
+
             SettingsNote {
                 visible: root.isBorderless && root.isCardStyle
                 warning: true
