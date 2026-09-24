@@ -130,6 +130,15 @@ Item {
         root.save()
     }
 
+    // Ctrl+Enter: save now and leave the editor (the original Quick Note's shortcut).
+    property bool justSaved: false
+    function finish(): void {
+        root.save()
+        textArea.focus = false
+        root.justSaved = true
+        savedFlash.restart()
+    }
+
     function save(): void {
         if (!root.loaded) return
         saveTimer.stop()
@@ -137,6 +146,12 @@ Item {
             .filter(n => n.pinned || (n.text ?? "") !== "")
             .map(n => ({ text: n.text ?? "", pinned: !!n.pinned, updated: n.updated ?? 0 }))
         store.setText(JSON.stringify({ version: 1, notes: stored }, null, 2))
+    }
+
+    Timer {
+        id: savedFlash
+        interval: 1500
+        onTriggered: root.justSaved = false
     }
 
     Timer {
@@ -333,7 +348,31 @@ Item {
 
                         onTextChanged: if (!root._settingText && root.loaded) root.setText(text)
                         Keys.onEscapePressed: focus = false
+                        Keys.onPressed: (event) => {
+                            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                    && (event.modifiers & Qt.ControlModifier)) {
+                                root.finish()
+                                event.accepted = true
+                            }
+                        }
                     }
+                }
+            }
+
+            // Hint while typing, brief confirmation after Ctrl+Enter
+            StyledText {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                visible: opacity > 0
+                opacity: textArea.activeFocus || root.justSaved ? 1 : 0
+                text: root.justSaved ? Translation.tr("Saved") : Translation.tr("Ctrl+Enter to save")
+                font.pixelSize: Appearance.font.pixelSize.smallest
+                color: root.justSaved
+                    ? (Appearance.inirEverywhere ? Appearance.inir.colPrimary : Appearance.colors.colPrimary)
+                    : (Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colOutline)
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation { duration: Appearance.animation.elementMoveFast.duration }
                 }
             }
         }
