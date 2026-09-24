@@ -196,9 +196,17 @@ Singleton {
         Config.setNestedValue("background.widgets.custom." + widgetId + "." + key, value);
     }
 
+    // KWin port: widget names/ids become directory names inside shell scripts (and `rm -rf`
+    // targets), so only plain kebab/snake-case names are accepted: "..", quotes or a heredoc
+    // terminator in a name would escape the widgets folder or the script.
+    function _validWidgetId(id: string): bool {
+        return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id ?? ""));
+    }
+
     // Create a new widget from template
     function create(name: string): void {
         if (!name || name.length === 0) return;
+        if (!root._validWidgetId(name)) { console.warn("[CustomWidgets] invalid widget name:", name); return; }
         _createProcess.widgetName = name;
         _createProcess.running = true;
     }
@@ -206,6 +214,7 @@ Singleton {
     // Delete a widget by removing its directory
     function remove(widgetId: string): void {
         if (!widgetId || widgetId.length === 0) return;
+        if (!root._validWidgetId(widgetId)) { console.warn("[CustomWidgets] invalid widget id:", widgetId); return; }
         _removeProcess.widgetId = widgetId;
         _removeProcess.running = true;
     }
@@ -404,7 +413,7 @@ IRIS_QML
         id: _removeProcess
         property string widgetId: ""
         running: false
-        command: ["bash", "-c", `rm -rf "${root.widgetsDir}/${_removeProcess.widgetId}" && echo "removed"`]
+        command: ["bash", "-c", 'rm -rf -- "$1/$2" && echo "removed"', "bash", root.widgetsDir, _removeProcess.widgetId]
         stdout: StdioCollector {
             onStreamFinished: root.reload()
         }
