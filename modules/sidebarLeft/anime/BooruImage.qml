@@ -25,17 +25,24 @@ Button {
     property string downloadPath
     property string nsfwPath
     readonly property string _fileUrl: imageData?.file_url ?? imageData?.sample_url ?? imageData?.preview_url ?? ""
+    // KWin port: the name comes from a remote API reply and is URL-decoded, so "%2F" became
+    // "/" and "../../.bashrc" escaped the download folder. Keep it a plain file name.
+    function _safeFileName(name: string): string {
+        const n = String(name ?? "").replace(/[\/\x00]/g, "_")
+        return (n === "" || n === "." || n === "..") ? "" : n
+    }
     property string fileName: {
         if (root._fileUrl.length > 0) {
             const cleanUrl = root._fileUrl.split("?")[0]
             const slashIndex = cleanUrl.lastIndexOf("/")
-            const candidate = decodeURIComponent(cleanUrl.substring(slashIndex + 1))
+            let candidate = ""
+            try { candidate = root._safeFileName(decodeURIComponent(cleanUrl.substring(slashIndex + 1))) } catch (e) {}
             if (candidate.length > 0)
                 return candidate
         }
         const fallbackId = String(root.imageData?.id ?? "preview")
         const fallbackExt = String(root.imageData?.file_ext ?? "jpg")
-        return fallbackId + "." + fallbackExt
+        return root._safeFileName(fallbackId + "." + fallbackExt) || "preview.jpg"
     }
     property string filePath: `${root.previewDownloadPath}/${root.fileName}`
     property int maxTagStringLineLength: 50
@@ -91,7 +98,9 @@ Button {
     Process {
         id: downloadProcess
         running: false
-        command: ["/usr/bin/bash", "-c", `mkdir -p '${root.previewDownloadPath}' && [ -f ${root.filePath} ] || curl -sSL '${root.imageData.preview_url ?? root.imageData.sample_url}' -o '${root.filePath}'`]
+        // KWin port: URL and paths as arguments (they come from a remote API reply).
+        command: ["/usr/bin/bash", "-c", 'mkdir -p "$1" && [ -f "$2" ] || curl -sSL "$3" -o "$2"',
+            "bash", root.previewDownloadPath, root.filePath, String(root.imageData?.preview_url ?? root.imageData?.sample_url ?? "")]
         onExited: (exitCode, exitStatus) => {
             imageObject.source = `${previewDownloadPath}/${root.fileName}`
         }
@@ -263,8 +272,9 @@ Button {
                     action: () => {
                         const targetPath = root.imageData.is_nsfw ? root.nsfwPath : root.downloadPath;
                         const localPath = `${targetPath}/${root.fileName}`;
-                        Quickshell.execDetached(["/usr/bin/bash", "-c", 
-                            `mkdir -p '${targetPath}' && curl '${root.imageData.file_url}' -o '${localPath}' && notify-send '${Translation.tr("Download complete")}' '${localPath}' -a 'Shell'`
+                        Quickshell.execDetached(["/usr/bin/bash", "-c",
+                            'mkdir -p "$1" && curl "$2" -o "$3" && notify-send "$4" "$3" -a Shell',
+                            "bash", targetPath, String(root.imageData.file_url ?? ""), localPath, Translation.tr("Download complete")
                         ])
                         if (Config.options?.sidebar?.openFolderOnDownload ?? false)
                             ShellExec.execDetachedArgs(["xdg-open", targetPath], "Open image")
@@ -279,7 +289,8 @@ Button {
                         const localPath = `${targetPath}/${root.fileName}`;
                         const mode = Appearance.m3colors.darkmode ? "dark" : "light";
                         Quickshell.execDetached(["/usr/bin/bash", "-c",
-                            `mkdir -p '${targetPath}' && curl -sSL '${root.imageData.file_url}' -o '${localPath}' && '${Directories.wallpaperSwitchScriptPath}' --image '${localPath}' --mode '${mode}'`
+                            'mkdir -p "$1" && curl -sSL "$2" -o "$3" && "$4" --image "$3" --mode "$5"',
+                            "bash", targetPath, String(root.imageData.file_url ?? ""), localPath, Directories.wallpaperSwitchScriptPath, mode
                         ])
                     }
                 }
