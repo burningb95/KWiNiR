@@ -100,6 +100,10 @@ Singleton {
     function load() { } // Dummy to force init
 
     function _doEnable() {
+        if (CompositorService.isKWin) {
+            root._kwinApply(true)
+            return
+        }
         if (CompositorService.isNiri) {
             // Keep night light outside inir.service's cgroup. It must survive
             // shell reloads without being reported as a leaked child process.
@@ -117,6 +121,10 @@ Singleton {
 
     function enable() {
         root.active = true;
+        if (CompositorService.isKWin) {
+            root._kwinApply(true);
+            return;
+        }
         if (CompositorService.isNiri) {
             // Kill first, then start after kill completes
             wlsunsetKillProc.running = true;
@@ -127,6 +135,10 @@ Singleton {
 
     function disable() {
         root.active = false;
+        if (CompositorService.isKWin) {
+            root._kwinApply(false);
+            return;
+        }
         if (CompositorService.isNiri) {
             wlsunsetKillProc.running = true;
         } else {
@@ -135,6 +147,10 @@ Singleton {
     }
 
     function fetchState() {
+        if (CompositorService.isKWin) {
+            kwinFetchProc.running = true;
+            return;
+        }
         if (CompositorService.isNiri) {
             niriFetchProc.running = true;
         } else {
@@ -155,7 +171,7 @@ Singleton {
 
     Process {
         id: fetchProc
-        running: !CompositorService.isNiri
+        running: !CompositorService.isNiri && !CompositorService.isKWin
         command: ["/usr/bin/bash", "-c", "hyprctl hyprsunset temperature"]
         stdout: StdioCollector {
             id: stateCollector
@@ -167,6 +183,73 @@ Singleton {
                     root.active = (output != "6500"); // 6500 is the default when off
             }
         }
+    }
+
+    // === KWin (KWin Night Light) ===
+    // KWin port: the filter is KWin's own Night Light in Constant mode; iNiR's
+    // schedule/manual logic above still decides when it is on. Settings go to
+    // kwinrc [NightColor] with KConfig change notifications (--notify), which is
+    // how KWin's KConfigWatcher picks them up (like System Settings). Unchanged
+    // values are not rewritten, so re-applying the same state is free.
+    // Undo: REVERT-nightlight.sh in ~/.local/share/Fancy-Floating-Bar.
+    readonly property int _kwinTemperature: Math.max(1000, Math.min(6500, Math.round(root.colorTemperature)))
+    property var _kwinPending: null
+
+    function _kwinApply(on: bool): void {
+        const want = { active: on, temperature: root._kwinTemperature }
+        if (kwinWriteProc.running) {
+            root._kwinPending = want
+            return
+        }
+        kwinWriteProc.command = ["/usr/bin/bash", "-c",
+            'k() { /usr/bin/kwriteconfig6 --file kwinrc --group NightColor --key "$1" --notify "$2"; }; '
+            + 'k Mode Constant && k NightTemperature "$2" && k Active "$1"',
+            "bash", want.active ? "true" : "false", String(want.temperature)]
+        kwinWriteProc.running = true
+    }
+
+    Process {
+        id: kwinWriteProc
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode !== 0)
+                console.warn("[NightLight] kwriteconfig6 failed:", exitCode)
+            if (root._kwinPending) {
+                const next = root._kwinPending
+                root._kwinPending = null
+                root._kwinApply(next.active)
+            }
+        }
+    }
+
+    function _kwinParseEnabled(text: string): void {
+        const m = /'enabled':\s*<(true|false)>|\(<(true|false)>,\)/.exec(String(text))
+        if (m)
+            root.active = (m[1] ?? m[2]) === "true"
+    }
+
+    Process {
+        id: kwinFetchProc
+        running: CompositorService.isKWin
+        command: ["/usr/bin/gdbus", "call", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/org/kde/KWin/NightLight", "--method",
+            "org.freedesktop.DBus.Properties.Get", "org.kde.KWin.NightLight", "enabled"]
+        stdout: StdioCollector { onStreamFinished: root._kwinParseEnabled(text) }
+    }
+
+    // Follow changes made elsewhere too (System Settings, another toggle): KWin
+    // emits PropertiesChanged on /org/kde/KWin/NightLight. Event-driven, no polling.
+    Process {
+        id: kwinMonitorProc
+        running: CompositorService.isKWin
+        command: ["/usr/bin/gdbus", "monitor", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/org/kde/KWin/NightLight"]
+        stdout: SplitParser { onRead: line => { if (line.indexOf("'enabled'") >= 0) root._kwinParseEnabled(line) } }
+        onExited: if (CompositorService.isKWin) kwinMonitorRestart.restart()
+    }
+    Timer {
+        id: kwinMonitorRestart
+        interval: 5000
+        onTriggered: kwinMonitorProc.running = true
     }
 
     // === Niri processes (wlsunset) ===
@@ -221,7 +304,9 @@ Singleton {
             if (!root.active) return;
             const temp = Config.options?.light?.night?.colorTemperature ?? root.colorTemperature;
             
-            if (CompositorService.isNiri) {
+            if (CompositorService.isKWin) {
+                root._kwinApply(true);
+            } else if (CompositorService.isNiri) {
                 // Queue restart with debounce
                 root._pendingRestart = true;
                 restartDebounce.restart();

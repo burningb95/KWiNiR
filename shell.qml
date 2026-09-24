@@ -103,6 +103,15 @@ ShellRoot {
     // (game-mode fullscreen detection, file-transfer progress) with the bar.
     readonly property bool _kwinBridgeWake: KWinBridge.enabled
 
+    // KWin port: upstream starts the night-light service in its Tier-3 boot step
+    // (T+500 ms); this shell.qml dropped that, so a schedule only ran once a
+    // sidebar was opened. Same timing as upstream.
+    Timer {
+        interval: 500
+        running: Config.ready
+        onTriggered: Hyprsunset.load()
+    }
+
     /**
      * KWin port: caffeine. Every idle toggle (both quick-toggle styles and the
      * left sidebar's tools view) flips Idle.inhibit, but upstream only acts on it

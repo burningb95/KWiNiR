@@ -812,7 +812,7 @@ ContentPage {
                     Layout.fillWidth: true
                     spacing: 6
                     readonly property var hidden: Array.from(Config.options?.sidebar?.quickToggles?.hiddenTypes ?? [])
-                    readonly property var inertOnKWin: ["nightLight", "darkMode", "colorPicker", "onScreenKeyboard", "cloudflareWarp"]
+                    readonly property var inertOnKWin: ["darkMode", "colorPicker", "onScreenKeyboard", "cloudflareWarp"]
                     readonly property var types: (Config.options?.sidebar?.quickToggles?.style ?? "classic") === "android"
                         ? ["network", "hotspot", "bluetooth", "idleInhibitor", "easyEffects", "nightLight", "darkMode", "cloudflareWarp",
                            "gameMode", "screenSnip", "colorPicker", "onScreenKeyboard", "mic", "audio", "notifications",
