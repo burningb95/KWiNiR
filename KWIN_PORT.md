@@ -390,13 +390,37 @@ a `PageResetFooter` (two clicks; "my setup" = `~/.config/pillbar/baseline.json`,
 |---|---|---|---|
 | 1 Pill | Bar › "Open Ricelin Pill settings" | Row order drag editor (`PillRowOrderEditor`, upstream BarModuleOrderEditor on `bar.pill.rowOrder`); clipboard history switch; Candy icons (enable + 2 opacities); Bar › Behavior: peek + duration; reset | `e07e86b` |
 | 2 Sidebars | Sidebars | Size (width / full·fit·fixed / height per sidebar); Arrange: left Widgets-tab order row; Right: Layout default/compact, bar-only avatar Choose/Default, "Shown toggles" chips (`hiddenTypes`, both styles); YT Music + Screen Time switches hidden on KWin; reset | `9285655` |
+| 4 Palettes | Themes › Colors | "My palettes" cards; Terminal Colors + Scheme Variant hidden on KWin; reset re-applies the palette file | `75f1c0c` |
+| 5 Game mode | Quick › Game mode | chips for `gameMode.kwinEffects`; Niri switch hidden; auto-detect disabled on KWin (no window state) | `75f1c0c` |
+| 6 Reset & shortcuts | Advanced › Reset & shortcuts | shortcut list + global reset (backs up config first); app-theming switches hidden with a note; **Meta+Comma** registered | `75f1c0c` |
+| 7 Notifications | Panels › Notifications | low / critical / ignore-app / max popup time | `75f1c0c` |
 
 Fixed on the way: `SidebarLayoutEditor` used `Array.isArray` on Config lists,
 so Arrange showed and wrote back the *default* order. Remaining
 `Array.isArray` uses on config values are in features the port doesn't use
 (Orbit shelf, desktop widgets) or on JSON-parsed strings (settings nav/chrome).
 
-Planned: 4 My palettes (Themes) · 5 game-mode KWin effects list · 6 global
-reset + hotkeys (settings = **Meta+Comma**, free; offer one for `pill peek`) ·
-7 notification popup timeouts (`notifications.{timeoutLow,timeoutCritical,
-ignoreAppTimeout,maxPopupLifetime}`). YT Music is dropped.
+Theming guards (`6c5ed14`): `Directories.wallpaperSwitchScriptPath` is a blocked path (all 15
+switchwall.sh callers), Vesktop generation gated on `defaultApplyExternal`, auto-regen just
+re-reads `colors.json`. Nothing outside the bar reads `~/.local/state/quickshell/user/generated`.
+
+## Phase 4 verification (2026-09-23)
+
+Driven through `config.json` (as the settings window writes it), with the config backed up
+and restored afterwards (identical):
+
+| Check | Result |
+|---|---|
+| `bar.pill.rowOrder` live | ✔ pill reordered (peek + capture) |
+| `appearance.candy.enable=false` live | ✔ upstream glyphs back |
+| `sidebar.shellLayout.system.width` live | ✔ left edge moved exactly 160 px for 620→460 |
+| `hiddenTypes` += nightLight (classic grid) live | ✔ only the toggle row changed |
+| game mode + `kwinEffects` | ✔ unloaded exactly the 2 chosen, recovery file written, restored, file removed |
+| survives restart | ✔ values kept; restart changed **no** keys; log clean |
+| broken JSON | ✔ bar kept running, `.broken-*` copy, file not overwritten, writes blocked; recovers reads + writes after fix |
+| Meta+Comma | ✔ via kglobalaccel invoke: opens, second press closes |
+| UserPalettes first call after start | ✘→✔ fixed (async folder scan) |
+| real settings window (Themes) | ✔ renders My palettes |
+
+Not driven: clicks/drags themselves (can't click from a session) — see CLAUDE.md
+*Needs Camron*. YT Music is dropped.
