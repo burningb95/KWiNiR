@@ -67,7 +67,7 @@ Rectangle {
     
     property var allTabs: [
         {"type": "calendar", "name": Translation.tr("Calendar"), "icon": "calendar_month", "widget": calendarWidget},
-        {"type": "events", "name": Translation.tr("Events"), "icon": "event_upcoming", "widget": eventsWidgetComponent},
+        {"type": "events", "name": Translation.tr("Events"), "icon": "edit_note", "widget": eventsWidgetComponent},
         {"type": "todo", "name": Translation.tr("To Do"), "icon": "candy:todo", "widget": todoWidget},  // KWin port: CandyGlyphs
         {"type": "notepad", "name": Translation.tr("Notepad"), "icon": "edit_note", "widget": notepadWidget},
         {"type": "calculator", "name": Translation.tr("Calc"), "icon": "calculate", "widget": calculatorWidget},

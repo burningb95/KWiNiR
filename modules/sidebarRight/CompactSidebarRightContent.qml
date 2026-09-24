@@ -302,7 +302,7 @@ Item {
                             spacing: root.compactGridSpacing
 
                             MaterialSymbol {
-                                text: "event_upcoming"
+                                text: "edit_note"
                                 iconSize: 16
                                 fill: 1
                                 color: upcomingArea._colPrimary
@@ -707,7 +707,7 @@ Item {
         const enabled = Config.options?.sidebar?.right?.enabledWidgets ?? ["calendar", "todo", "notepad", "calculator", "sysmon", "weather", "timer"]
         const all = [
             {id: "calendar",   icon: "calendar_month", label: Translation.tr("Calendar"),   component: calendarComponent},
-            {id: "events",     icon: "event_upcoming", label: Translation.tr("Events"),     component: eventsComponent},
+            {id: "events",     icon: "edit_note",     label: Translation.tr("Events"),     component: eventsComponent},
             {id: "todo",       icon: "candy:todo",    label: Translation.tr("To Do"),      component: todoComponent},  // KWin port: CandyGlyphs
             {id: "notepad",    icon: "edit_note",     label: Translation.tr("Notepad"),    component: notepadComponent},
             {id: "calculator", icon: "calculate",     label: Translation.tr("Calc"),       component: calculatorComponent},

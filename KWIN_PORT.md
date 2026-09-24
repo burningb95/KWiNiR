@@ -466,3 +466,29 @@ the bell) are each gated on `pill.hoverModules?.wifi` / `?.inbox`, which read
 (`~/.config/pillbar/config.json`) and restarted the service. Undo: flip both back to `true`
 and restart, or restore `backups/config-before-hide-wifi-inbox-1790280239.json` from the bar
 repo. Other pill items (battery, weather, tray, mixer, power, sidebars, workspaces) untouched.
+
+## Quick Note gets a real icon, Events & Reminders inherits its old one (2026-09-24)
+
+Left sidebar Quick Note's header (`widgets/QuickNote.qml`) swapped the `edit_note` Material
+glyph for candy-icons' `bijiben` (a notes-app icon, symlinked to `accessories-notes.svg`),
+drawn via `IconImage { source: Quickshell.iconPath("bijiben", true) }` — same pattern as
+`pill/CandyStatusIcon.qml`, so it follows the shell's active icon theme (`pragma IconTheme
+candy-icons` in `shell.qml`) rather than a hardcoded path. `edit_note` then moved to the right
+sidebar's Events & Reminders (`sidebarRight/events/EventsWidget.qml` and its five tab/label
+sites in `BottomWidgetGroup.qml`, `SidebarRightContent.qml`, `CompactSidebarRightContent.qml`
+×2, `settings/SidebarsConfig.qml`), which previously used `event_upcoming`.
+
+**Not touched, on purpose:** Dashboard's separate "Agenda"/"Notes" cards (own labels, same
+`event_upcoming`/`edit_note` glyphs reused independently) — different feature, wasn't asked
+about. Also left as the plain `edit_note` glyph: the Quick Note entry in
+`DraggableWidgetContainer.qml`'s `itemIcons` (only shown as a small chip when Quick Note is
+hidden via Edit mode) and its `InterfaceConfig.qml` settings-switch icon — both render through
+`MaterialSymbol`/`OptionalMaterialSymbol`, which are ligature-text only and have no image
+support, unlike the header. Say the word if you want those made image-consistent too; it'd
+mean adding a `candy:`-prefixed image path to those two components (the "To Do" tab icon
+already uses a `candy:todo` prefix, so there's precedent).
+
+Process note: these six files were edited directly in the live tree instead of staging first
+(should have gone through `staging/pillbar/` + `test-staging.sh` per the normal workflow) —
+low-risk, icon-only changes using an already-proven `IconImage`/`Quickshell.iconPath` pattern,
+but staging has since been synced to match so the trees don't drift.

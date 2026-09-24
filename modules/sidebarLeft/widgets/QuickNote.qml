@@ -2,7 +2,9 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import Quickshell
 import Quickshell.Io
+import Quickshell.Widgets
 import qs
 import qs.modules.common
 import qs.modules.common.widgets
@@ -249,10 +251,12 @@ Item {
                 Layout.fillWidth: true
                 spacing: 2
 
-                MaterialSymbol {
-                    text: "edit_note"
-                    iconSize: 16
-                    color: Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1
+                // KWin port: candy-icons bijiben (note app) instead of the edit_note glyph;
+                // the glyph moved to Events & Reminders (see KWIN_PORT.md).
+                IconImage {
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    source: Quickshell.iconPath("bijiben", true)
                 }
 
                 StyledText {

@@ -112,7 +112,7 @@ Item {
             spacing: 8
             
             MaterialSymbol {
-                text: "event_upcoming"
+                text: "edit_note"
                 iconSize: 20
                 fill: 1
                 color: root.colPrimary

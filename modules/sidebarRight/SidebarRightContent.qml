@@ -53,7 +53,7 @@ Item {
     readonly property bool detailOpen: expandedWidgetType.length > 0
     readonly property var detailMeta: ({
         calendar: { title: Translation.tr("Calendar"), icon: "calendar_month" },
-        events: { title: Translation.tr("Events"), icon: "event_upcoming" },
+        events: { title: Translation.tr("Events"), icon: "edit_note" },
         todo: { title: Translation.tr("To Do"), icon: "checklist" }
     })
 

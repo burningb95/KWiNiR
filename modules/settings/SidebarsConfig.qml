@@ -707,7 +707,7 @@ ContentPage {
                 }
 
                 SettingsSwitch {
-                    buttonIcon: "event_upcoming"
+                    buttonIcon: "edit_note"
                     text: Translation.tr("Events")
                     Component.onCompleted: checked = rightSidebarWidgets.isEnabled("events")
                     onClicked: {
