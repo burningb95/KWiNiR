@@ -60,6 +60,64 @@ Item {
         }
         return out
     }
+    // ─── KWin port: in-sidebar layout editing ("Edit" button) ─────────────
+    // arranging: persistent edit mode — hide (✕), cycle size, drag from anywhere,
+    // add hidden items/spacers from a tray. Writes the same config as Settings.
+    property bool arranging: false
+    readonly property var itemLabels: ({
+        media: Translation.tr("Media player"), week: Translation.tr("Week strip"),
+        context: Translation.tr("Weather"), note: Translation.tr("Quick note"),
+        launch: Translation.tr("Quick launch"), controls: Translation.tr("Controls"),
+        status: Translation.tr("Status rings"), crypto: Translation.tr("Crypto"),
+        wallpaper: Translation.tr("Wallpapers"), worldclock: Translation.tr("World clock")
+    })
+    readonly property var itemIcons: ({
+        media: "music_note", week: "calendar_view_week", context: "partly_cloudy_day",
+        note: "edit_note", launch: "rocket_launch", controls: "tune", status: "monitoring",
+        crypto: "currency_bitcoin", wallpaper: "wallpaper", worldclock: "public"
+    })
+    readonly property var flagKeys: ({
+        media: "media", week: "week", context: "context", note: "note", launch: "launch",
+        controls: "controls", status: "status", crypto: "crypto", wallpaper: "wallpaper",
+        worldclock: "worldClock"
+    })
+    readonly property var hiddenItems: Object.keys(root.flagKeys).filter(id => !root.visibleWidgets.includes(id))
+
+    function setShown(id: string, shown: bool): void {
+        Config.setNestedValue("sidebar.widgets." + root.flagKeys[id], shown)
+        if (shown) {
+            const order = Array.from(Config.options?.sidebar?.widgets?.widgetOrder ?? [])
+            if (!order.includes(id)) Config.setNestedValue("sidebar.widgets.widgetOrder", order.concat([id]))
+        }
+    }
+    function _spacerPairs(): var {
+        return Array.from(Config.options?.sidebar?.widgets?.spacers ?? []).map(String).filter(e => e.indexOf("=") > 0)
+    }
+    function addSpacer(): void {
+        const pairs = root._spacerPairs()
+        let n = 1
+        while (pairs.some(e => e.startsWith("spacer-" + n + "="))) n++
+        const id = "spacer-" + n
+        Config.setNestedValue("sidebar.widgets.spacers", pairs.concat([id + "=24"]))
+        const order = Array.from(Config.options?.sidebar?.widgets?.widgetOrder ?? [])
+        if (!order.includes(id)) Config.setNestedValue("sidebar.widgets.widgetOrder", order.concat([id]))
+    }
+    function removeItem(id: string): void {
+        if (id.startsWith("spacer-")) {
+            Config.setNestedValue("sidebar.widgets.spacers", root._spacerPairs().filter(e => !e.startsWith(id + "=")))
+            Config.setNestedValue("sidebar.widgets.widgetOrder",
+                Array.from(Config.options?.sidebar?.widgets?.widgetOrder ?? []).filter(x => x !== id))
+        } else {
+            root.setShown(id, false)
+        }
+    }
+    function cycleSize(id: string): void {
+        const next = ({ normal: "tall", tall: "fill", fill: "normal" })[root.sizeMap[id] ?? "normal"] ?? "normal"
+        const rest = Array.from(Config.options?.sidebar?.widgets?.itemSizes ?? []).map(String)
+            .filter(e => !e.startsWith(id + "="))
+        Config.setNestedValue("sidebar.widgets.itemSizes", next === "normal" ? rest : rest.concat([id + "=" + next]))
+    }
+
     // Height the item column may use (set by WidgetsView); <= 0 disables fill.
     property real availableHeight: -1
     readonly property real fillShare: {
@@ -69,11 +127,15 @@ Item {
             const it = repeater.itemAt(i)
             if (!it || it.naturalHeight <= 0) continue
             shown++
+            fixed += it.editPad
             if (it.sizeMode === "fill") fills++
             else fixed += it.fixedHeight
         }
         if (fills === 0) return 0
-        return Math.max(0, (root.availableHeight - fixed - Math.max(0, shown - 1) * root.widgetSpacing) / fills)
+        // leave room for the Edit button (and the Add tray while arranging)
+        const footer = editButton.height + editButton.Layout.topMargin + root.widgetSpacing
+            + (addTray.visible ? addTray.height + addTray.Layout.topMargin + root.widgetSpacing : 0)
+        return Math.max(0, (root.availableHeight - fixed - Math.max(0, shown - 1) * root.widgetSpacing - footer) / fills)
     }
 
     readonly property var visibleWidgets: {
@@ -205,6 +267,7 @@ Item {
         function onSidebarLeftOpenChanged() {
             if (!GlobalStates.sidebarLeftOpen) {
                 root.cancelDrag()
+                root.arranging = false
             }
         }
     }
@@ -240,12 +303,18 @@ Item {
                 // KWin port: size from sidebar.widgets.itemSizes / spacers (see top of file)
                 readonly property bool isSpacer: modelData.startsWith("spacer-")
                 readonly property string sizeMode: isSpacer ? "normal" : (root.sizeMap[modelData] ?? "normal")
+                // While arranging, enabled items with nothing to show (media with no player)
+                // get a labelled placeholder so they can still be moved or removed.
+                readonly property bool placeholder: root.arranging && !isSpacer && (contentLoader.item?.implicitHeight ?? 0) <= 0
                 readonly property real naturalHeight: isSpacer ? (root.spacerMap[modelData] ?? 0)
-                    : (contentLoader.item?.implicitHeight ?? 0)
+                    : placeholder ? 40 : (contentLoader.item?.implicitHeight ?? 0)
                 readonly property real fixedHeight: sizeMode === "tall" ? Math.round(naturalHeight * 1.5) : naturalHeight
-                Layout.preferredHeight: naturalHeight <= 0 ? 0
+                // While arranging, a strip above each item holds its controls so they never cover content.
+                readonly property real editPad: root.arranging ? 28 : 0
+                readonly property real slotHeight: naturalHeight <= 0 ? 0
                     : sizeMode === "fill" ? Math.max(naturalHeight, Math.floor(root.fillShare))
                     : fixedHeight
+                Layout.preferredHeight: slotHeight <= 0 ? 0 : slotHeight + editPad
                 Layout.leftMargin: needsMargin ? 12 : 0
                 Layout.rightMargin: needsMargin ? 12 : 0
                 visible: Layout.preferredHeight > 0
@@ -395,13 +464,14 @@ Item {
                     Loader {
                         id: contentLoader
                         width: parent.width
+                        enabled: !root.arranging // KWin port: no accidental clicks while arranging
                         // KWin port: items that can use extra height (quick note, spacers) stretch to
                         // their tall/fill slot; the rest keep their natural height, centred in it.
                         // Always an explicit binding: resetting to undefined after "tall" kept the old
                         // height and overlapped the next item.
                         readonly property bool stretches: widgetWrapper.isSpacer || widgetWrapper.modelData === "note"
-                        height: stretches ? widgetWrapper.Layout.preferredHeight : widgetWrapper.naturalHeight
-                        y: stretches ? 0 : Math.max(0, Math.round((widgetWrapper.Layout.preferredHeight - height) / 2))
+                        height: stretches ? widgetWrapper.slotHeight : widgetWrapper.naturalHeight
+                        y: widgetWrapper.editPad + (stretches ? 0 : Math.max(0, Math.round((widgetWrapper.slotHeight - height) / 2)))
 
                         // Visual feedback when dragging
                         scale: widgetWrapper.isBeingDragged ? 1.02 : 1
@@ -471,8 +541,8 @@ Item {
                         id: dragHandle
                         anchors.top: contentLoader.top
                         anchors.right: contentLoader.right
-                        anchors.topMargin: 4
-                        anchors.rightMargin: 4
+                        anchors.topMargin: root.arranging ? 2 - widgetWrapper.editPad : 4 // KWin port: in the edit strip
+                        anchors.rightMargin: widgetWrapper.isSpacer || widgetWrapper.placeholder ? 16 : 4
                         width: 30
                         height: 22
                         radius: Appearance.inirEverywhere ? Appearance.inir.roundingSmall
@@ -492,7 +562,7 @@ Item {
                         border.width: Appearance.inirEverywhere ? 1 : 0
                         border.color: Appearance.inirEverywhere ? Appearance.inir.colBorder : "transparent"
 
-                        opacity: (handleHoverDetector.containsMouse || root.editMode) ? 1 : 0
+                        opacity: (handleHoverDetector.containsMouse || root.editMode || root.arranging) ? 1 : 0
                         visible: opacity > 0
 
                         Behavior on opacity {
@@ -580,6 +650,58 @@ Item {
                         }
                     }
 
+                    // KWin port: placeholder for an enabled item with nothing to show
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.topMargin: widgetWrapper.editPad
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        visible: widgetWrapper.placeholder
+                        radius: Appearance.rounding.small
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Appearance.colors.colOutlineVariant
+                        StyledText {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 40
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (root.itemLabels[widgetWrapper.modelData] ?? widgetWrapper.modelData)
+                                + (widgetWrapper.modelData === "media" ? " — " + Translation.tr("shows while something plays") : "")
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                        }
+                    }
+
+                    // KWin port: edit-mode controls — remove (top-left), size chip (left of the grip)
+                    Row {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.topMargin: 2
+                        anchors.leftMargin: widgetWrapper.isSpacer || widgetWrapper.placeholder ? 16 : 4
+                        spacing: 4
+                        z: 30
+                        visible: opacity > 0
+                        opacity: root.arranging && !widgetWrapper.isBeingDragged ? 1 : 0
+                        Behavior on opacity {
+                            enabled: Appearance.animationsEnabled
+                            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                        }
+
+                        EditChip {
+                            glyph: "close"
+                            tipText: widgetWrapper.isSpacer ? Translation.tr("Remove spacer") : Translation.tr("Hide")
+                            onClicked: root.removeItem(widgetWrapper.modelData)
+                        }
+                        EditChip {
+                            visible: !widgetWrapper.isSpacer
+                            glyph: widgetWrapper.sizeMode === "fill" ? "height" : widgetWrapper.sizeMode === "tall" ? "expand" : "check_indeterminate_small"
+                            label: widgetWrapper.sizeMode === "fill" ? Translation.tr("Fill")
+                                 : widgetWrapper.sizeMode === "tall" ? Translation.tr("Tall") : Translation.tr("Normal")
+                            tipText: Translation.tr("Size: click to cycle Normal → Tall → Fill")
+                            onClicked: root.cycleSize(widgetWrapper.modelData)
+                        }
+                    }
+
                     // Hover detector covering the whole widget to reveal the grip button
                     HoverHandler {
                         id: handleHoverDetector
@@ -590,7 +712,9 @@ Item {
                 MouseArea {
                     id: dragArea
                     anchors.fill: parent
-                    z: -1
+                    // KWin port: while arranging, sits above the (disabled) content and drags on move
+                    z: root.arranging ? 15 : -1
+                    cursorShape: root.arranging ? Qt.OpenHandCursor : Qt.ArrowCursor
                     acceptedButtons: Qt.LeftButton
 
                     property bool longPressTriggered: false
@@ -601,7 +725,8 @@ Item {
                     onPressed: (mouse) => {
                         longPressTriggered = false
                         pressY = mapToItem(column, mouse.x, mouse.y).y
-                        longPressTimer.restart()
+                        if (root.arranging) root.dragPending = true // keep the tab from scrolling
+                        else longPressTimer.restart()
                     }
 
                     onPositionChanged: (mouse) => {
@@ -610,7 +735,10 @@ Item {
                             root.updateDrag(globalY)
                         } else if (!longPressTriggered) {
                             const globalY = mapToItem(column, mouse.x, mouse.y).y
-                            if (Math.abs(globalY - pressY) > 10) {
+                            if (root.arranging && Math.abs(globalY - pressY) > 5) {
+                                longPressTriggered = true
+                                root.startDrag(widgetWrapper.index, globalY)
+                            } else if (Math.abs(globalY - pressY) > 10) {
                                 longPressTimer.stop()
                             }
                         }
@@ -622,6 +750,7 @@ Item {
                             root.endDrag()
                         }
                         longPressTriggered = false
+                        if (root.arranging) root.dragPending = false
                     }
 
                     onCanceled: {
@@ -630,6 +759,7 @@ Item {
                             root.cancelDrag()
                         }
                         longPressTriggered = false
+                        if (root.arranging) root.dragPending = false
                     }
 
                     Timer {
@@ -643,6 +773,54 @@ Item {
                     }
                 }
             }
+        }
+
+        // ─── KWin port: Add tray + Edit/Done ────────────────────────────
+        Flow {
+            id: addTray
+            Layout.fillWidth: true
+            // Explicit width: while hidden the layout doesn't size it, and a Flow sized from
+            // children whose width follows the Flow relayouts forever (hung the sidebar).
+            width: root.width - 24
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            Layout.topMargin: 4
+            spacing: 6
+            visible: root.arranging
+
+            StyledText {
+                width: root.width - 24
+                text: root.hiddenItems.length > 0 ? Translation.tr("Add") : Translation.tr("Add a spacer")
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+            }
+            Repeater {
+                model: root.hiddenItems
+                delegate: EditChip {
+                    required property string modelData
+                    glyph: root.itemIcons[modelData] ?? "add"
+                    label: root.itemLabels[modelData] ?? modelData
+                    tipText: Translation.tr("Show %1").arg(label)
+                    onClicked: root.setShown(modelData, true)
+                }
+            }
+            EditChip {
+                glyph: "space_bar"
+                label: Translation.tr("Spacer")
+                tipText: Translation.tr("Add a blank gap (drag it into place)")
+                onClicked: root.addSpacer()
+            }
+        }
+
+        EditChip {
+            id: editButton
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 6
+            glyph: root.arranging ? "check" : "edit"
+            label: root.arranging ? Translation.tr("Done") : Translation.tr("Edit")
+            accent: root.arranging
+            tipText: root.arranging ? Translation.tr("Finish editing") : Translation.tr("Move, hide, resize and add widgets")
+            onClicked: { root.cancelDrag(); root.arranging = !root.arranging }
         }
     }
 
@@ -700,7 +878,7 @@ Item {
                 color: "transparent"
                 border.width: 1
                 border.color: Appearance.colors.colOutlineVariant
-                opacity: root.editMode ? 0.8 : 0
+                opacity: (root.editMode || root.arranging) ? 0.8 : 0
                 visible: opacity > 0
                 Behavior on opacity {
                     enabled: Appearance.animationsEnabled
@@ -708,5 +886,42 @@ Item {
                 }
             }
         }
+    }
+
+    // KWin port: small pill button for the edit controls
+    component EditChip: RippleButton {
+        id: chip
+        property string glyph
+        property string label: ""
+        property string tipText
+        property bool accent: false
+        implicitHeight: 24
+        implicitWidth: chipRow.implicitWidth + (chip.label.length > 0 ? 16 : 8)
+        buttonRadius: Appearance.rounding.full
+        colBackground: chip.accent ? Appearance.colors.colPrimary
+            : ColorUtils.transparentize(Appearance.colors.colLayer2, 0.1)
+        colBackgroundHover: chip.accent ? Appearance.colors.colPrimaryHover : Appearance.colLayer2Hover
+        colRipple: chip.accent ? Appearance.colors.colPrimaryActive : Appearance.colLayer2Active
+        contentItem: Item {
+            Row {
+                id: chipRow
+                anchors.centerIn: parent
+                spacing: 4
+                MaterialSymbol {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: chip.glyph
+                    iconSize: 14
+                    color: chip.accent ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                }
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: chip.label.length > 0
+                    text: chip.label
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: chip.accent ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                }
+            }
+        }
+        StyledToolTip { text: chip.tipText }
     }
 }
