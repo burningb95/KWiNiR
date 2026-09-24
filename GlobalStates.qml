@@ -308,6 +308,9 @@ Singleton {
     // Dialog requests from other panels (e.g. left sidebar → right sidebar)
     property bool requestWifiDialog: false
     property bool requestBluetoothDialog: false
+    // KWin port: left sidebar's Controls card → Eye protection dialog. Only the
+    // right sidebar on sidebarRightPresentationOutput takes it (one per monitor).
+    property bool requestNightLightDialog: false
     // Selection targets: "main", "backdrop", "waffle", "waffle-backdrop"
     property string wallpaperSelectionTarget: "main"
     // Target monitor for wallpaper selector (set before opening, avoids config timing issues)

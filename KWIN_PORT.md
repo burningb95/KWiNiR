@@ -176,10 +176,10 @@ orders: caffeine off → `IDLE` after 3 s; on → nothing over 8 s.
 
 ### Limitations on KWin
 
-- **Night light toggle does nothing** (upstream uses `hyprsunset`/`wlsunset`; KWin has
-  no `wlr-gamma-control`). KWin's own Night Light is on D-Bus at
-  `/org/kde/KWin/NightLight`; turning it on means writing `kwinrc [NightColor]`.
-  Deferred.
+- ~~Night light toggle does nothing~~ — **ported** (`services/Hyprsunset.qml` › *KWin*):
+  the bar drives KWin's own Night Light through `kwinrc [NightColor]` (Mode=Constant,
+  `--notify`) and follows `/org/kde/KWin/NightLight` over D-Bus. The bar's saved state wins:
+  it is re-applied (and Mode forced to Constant) at every bar start.
 - **Settings button is dead** — iNiR's `settings.qml` isn't extracted. Deferred.
 - **Screen time** has no per-app data (no window list on KWin). Won't fix.
 - **Reload button** runs `Hyprland.dispatch`/`niri msg` and a missing
@@ -442,6 +442,13 @@ All in `modules/sidebarLeft/`; the Widgets tab is `WidgetsView.qml` (header + sc
 | Controls card (toggles | actions) | `widgets/ControlsCard.qml` | `controlsCard.show*` (EasyEffects, Caffeine added; Network/Bluetooth hidden by him) |
 | Quick note: 5 notes, pin, ‹ ›, fresh note on open, Ctrl+Enter | `widgets/QuickNote.qml` | own store `~/.local/state/quickshell/user/quicknotes.json` (not the Notepad service) |
 | Fast wheel scrolling | `WidgetsView.qml` + iNiR `StyledFlickable`/`StyledListView` | `interactions.scrolling.fasterTouchpadScroll: true`, `mouseScrollFactor` 120 |
+| Controls card: "on" plate for toggles; Night light right-click → Eye protection dialog | `ControlsCard.qml` (`Toggle` sets `toggled`); `GlobalStates.requestNightLightDialog`, taken by `SidebarRightContent`/`CompactSidebarRightContent` on the matching output | — |
+
+Controls card icons are candy SVGs, which keep their own colours, so the glyph recolour
+upstream uses for "on" never showed; a soft primary plate (RippleButton `toggled`) does.
+The night-light right-click opens the right sidebar on the left sidebar's output; each
+monitor has its own right sidebar, so only the one on `sidebarRightPresentationOutput` takes
+the request (also checked on load, in case its content isn't resident yet).
 
 Traps hit building these (all fixed):
 - **z only orders siblings.** Controls inside a child container can't rise above a sibling

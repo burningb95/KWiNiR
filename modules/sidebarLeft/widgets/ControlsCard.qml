@@ -46,11 +46,19 @@ Item {
             onClicked: Notifications.toggleSilent()
             visible: Config.options?.sidebar?.widgets?.controlsCard?.showDnd ?? true
         }
-        Toggle { 
+        // KWin port: right-click opens the right sidebar's Eye protection dialog
+        // (temperature, schedule), like the quick toggle's right-click there.
+        Toggle {
             btnIcon: "nightlight"
-            tip: Translation.tr("Night light")
+            tip: Hyprsunset.active ? Translation.tr("Night light (on) · right-click for settings") : Translation.tr("Night light · right-click for settings")
             active: Hyprsunset.active ?? false
             onClicked: Hyprsunset.toggle()
+            altAction: () => {
+                const output = GlobalStates.sidebarLeftPresentationOutput
+                GlobalStates.sidebarLeftOpen = false
+                GlobalStates.openSidebarRight(output)
+                GlobalStates.requestNightLightDialog = true
+            }
             visible: Config.options?.sidebar?.widgets?.controlsCard?.showNightLight ?? true
         }
         Toggle { 
@@ -114,6 +122,12 @@ Item {
             : Appearance.inirEverywhere ? Appearance.inir.colLayer1Hover
             : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceHover
             : Appearance.colLayer1Hover
+        // KWin port: candy SVG icons keep their own colors, so the glyph's
+        // color/fill below can't show "on" for them — a soft primary plate does.
+        toggled: active
+        colBackgroundToggled: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.75)
+        colBackgroundToggledHover: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.62)
+        colRippleToggled: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.5)
         colRipple: Appearance.angelEverywhere ? Appearance.angel.colGlassCardActive
             : Appearance.inirEverywhere ? Appearance.inir.colLayer1Active
             : Appearance.auroraEverywhere ? Appearance.aurora.colSubSurfaceActive

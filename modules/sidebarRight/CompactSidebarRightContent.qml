@@ -143,6 +143,7 @@ Item {
     Component.onCompleted: {
         Notifications.ensureInitialized()
         handleRequestedWidget()
+        takeNightLightDialogRequest()
     }
 
     Connections {
@@ -756,6 +757,17 @@ Item {
                 root.showBluetoothDialog = true
             }
         }
+        function onRequestNightLightDialogChanged() { root.takeNightLightDialogRequest() }
+    }
+
+    // KWin port: see GlobalStates.requestNightLightDialog. Also checked on load,
+    // since the request can arrive before this sidebar's content exists.
+    function takeNightLightDialogRequest(): void {
+        if (!GlobalStates.requestNightLightDialog
+                || (root.panelScreen?.name ?? "") !== GlobalStates.sidebarRightPresentationOutput)
+            return
+        GlobalStates.requestNightLightDialog = false
+        root.showNightLightDialog = true
     }
 
     // ─────────────────────────────────────────────────────────────
