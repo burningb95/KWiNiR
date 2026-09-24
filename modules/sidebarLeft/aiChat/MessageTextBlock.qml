@@ -13,6 +13,13 @@ import Quickshell
 
 ColumnLayout {
     id: root
+
+    function _withoutRemoteImages(md) {
+        const local = t => /^<?\s*(\/(?!\/)|file:)/i.test(String(t).trim())
+        return NotificationUtils.stripRemoteImages(String(md ?? "")
+            .replace(/!\[([^\]]*)\]\(([^)]*)\)/g, (m, alt, target) => local(target) ? m : `[${alt || "image"}](${target})`)
+            .replace(/!\[([^\]]*)\]\[([^\]]*)\]/g, (m, alt, ref) => `[${alt || "image"}][${ref}]`))
+    }
     // These are needed on the parent loader
     property bool editing: false
     property bool renderMarkdown: true
@@ -162,7 +169,10 @@ ColumnLayout {
             wrapMode: TextEdit.Wrap
             color: root.messageData?.thinking ? (Appearance.inirEverywhere ? Appearance.inir.colTextSecondary : Appearance.colors.colSubtext) : (Appearance.inirEverywhere ? Appearance.inir.colText : Appearance.colors.colOnLayer1)
             textFormat: renderMarkdown ? TextEdit.MarkdownText : TextEdit.PlainText
-            text: modelData
+            // KWin port: Markdown/HTML images in an AI reply are fetched by Qt the moment they
+            // render (verified), so a prompt-injected reply could leak data through an image URL.
+            // Remote images become plain links; local ones (LaTeX renders) still show.
+            text: renderMarkdown ? root._withoutRemoteImages(modelData) : modelData
 
             onTextChanged: {
                 if (!root.editing) return
