@@ -77,7 +77,14 @@ Singleton {
         onFileChanged: root.userAvatarRevision++
     }
     property string coverArt: `${Directories.cachePath}/media/coverart`
-    property string tempImages: "/tmp/quickshell/media/images"
+    /**
+     * KWin port: private scratch space in $XDG_RUNTIME_DIR (0700, tmpfs) instead of fixed
+     * /tmp/quickshell paths. /tmp is shared: other users could read decoded clipboard
+     * images and screenshots, pre-create or symlink these dirs (the startup `rm -rf`
+     * follows a symlinked parent), or swap the AI request script before it runs.
+     */
+    property string runtimeTemp: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/kwinir`
+    property string tempImages: `${runtimeTemp}/media/images`
     property string booruPreviews: `${Directories.cachePath}/media/boorus`
     property string booruDownloads: Config.options?.sidebar?.booru?.downloadPath?.sfw || Directories.wallpapersPath
     property string booruDownloadsNsfw: Config.options?.sidebar?.booru?.downloadPath?.nsfw || `${Directories.wallpapersPath}/🌶️`
@@ -106,8 +113,8 @@ Singleton {
     property string generatedThemeMetaPath: `${Directories.stateUserPath}/generated/theme-meta.json`
     property string generatedChromiumThemePath: `${Directories.stateUserPath}/generated/chromium.theme`
     property string generatedWallpaperCategoryPath: `${Directories.stateUserPath}/generated/wallpaper/category.txt`
-    property string cliphistDecode: FileUtils.trimFileProtocol(`/tmp/quickshell/media/cliphist`)
-    property string screenshotTemp: "/tmp/quickshell/media/screenshot"
+    property string cliphistDecode: FileUtils.trimFileProtocol(`${runtimeTemp}/media/cliphist`)
+    property string screenshotTemp: `${runtimeTemp}/media/screenshot`
     // KWin port: switchwall.sh regenerates colors for terminals, GTK, Qt, etc. — the
     // system-wide takeover this port exists to avoid. Its 15 call sites all read
     // this path, so it is blocked here on purpose (not merely "not shipped").
@@ -150,6 +157,7 @@ Singleton {
     }
     // Cleanup on init
     Component.onCompleted: {
+        Quickshell.execDetached(["mkdir", "-p", "-m", "700", `${runtimeTemp}/ai`])
         Quickshell.execDetached(["mkdir", "-p", `${shellConfig}`])
         Quickshell.execDetached(["mkdir", "-p", `${stateUserPath}`])
         Quickshell.execDetached(["mkdir", "-p", `${favicons}`])

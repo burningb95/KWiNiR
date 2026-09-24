@@ -956,7 +956,8 @@ Singleton {
         }
     }
 
-    property string requestScriptFilePath: "/tmp/quickshell/ai/request.sh"
+    // KWin port: private runtime dir, not a fixed /tmp path (the script is executed).
+    property string requestScriptFilePath: `${Directories.runtimeTemp}/ai/request.sh`
     property string pendingFilePath: ""
 
     function ensureInitialized(): void {

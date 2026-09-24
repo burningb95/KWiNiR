@@ -72,7 +72,7 @@ Singleton {
 
             readonly property string screenName: modelData?.name ?? ""
             readonly property string hostPath: Quickshell.shellPath("modules/background/WebWallpaperHost.qml")
-            readonly property string pidFile: "/tmp/quickshell/web-wallpaper-" + screenName.replace(/[^A-Za-z0-9_.-]/g, "_") + ".pid"
+            readonly property string pidFile: Directories.runtimeTemp + "/web-wallpaper-" + screenName.replace(/[^A-Za-z0-9_.-]/g, "_") + ".pid"
             property bool wantStart: false
             property bool restarting: false
 

@@ -2043,7 +2043,7 @@ print("")
     }
 
     // Use a short, guaranteed-existing path for the mpv IPC socket to avoid unix socket length issues
-    property string ipcSocket: "/tmp/qs-ytmusic-mpv.sock"
+    property string ipcSocket: `${Directories.runtimeTemp}/ytmusic-mpv.sock` // KWin port: private dir, not /tmp
 
     Process {
         id: _stopProc
