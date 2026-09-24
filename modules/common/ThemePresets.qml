@@ -3900,20 +3900,29 @@ Singleton {
     function _doWriteGeneratedFiles(colorsJson, paletteJson, appPaletteJson, terminalJson, themeMeta, scss, chromiumRgb) {
         const genDir = Directories.stateUserPath + "/generated";
         // Build a single bash script that writes all files atomically.
-        // JSON uses double quotes only, so single-quoting is safe.
-        let script = `set -e; mkdir -p '${genDir}'\n`;
+        // KWin port: contents and paths go in as arguments. They were single-quoted into the
+        // script on the assumption that JSON has no single quotes, but string values (a theme
+        // or palette name like "Rosé's") can, which broke the write or ran the rest as shell.
+        //   $1 genDir  $2..$7 target paths  $8..$13 contents  $14 chromium path  $15 chromium rgb
+        let script = 'set -e; mkdir -p "$1"\n';
         // KWin port: keep the palette a preset is about to replace (last 5).
-        script += `f='${Directories.generatedMaterialThemePath}'; [ -s "$f" ] && cp -p "$f" "$f.bak-$(date +%s)"; ls -t "$f".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f\n`;
-        script += `printf '%s' '${colorsJson}' > '${Directories.generatedMaterialThemePath}'\n`;
-        script += `printf '%s' '${paletteJson}' > '${Directories.generatedPalettePath}'\n`;
-        script += `printf '%s' '${appPaletteJson}' > '${Directories.generatedAppPalettePath}'\n`;
-        script += `printf '%s' '${terminalJson}' > '${Directories.generatedTerminalPalettePath}'\n`;
-        script += `printf '%s' '${themeMeta}' > '${Directories.generatedThemeMetaPath}'\n`;
-        script += `printf '%s' '${scss}' > '${Directories.generatedMaterialScssPath}'\n`;
+        script += 'f="$2"; [ -s "$f" ] && cp -p "$f" "$f.bak-$(date +%s)"; ls -t "$f".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f\n';
+        script += 'printf "%s" "$8" > "$2"\n';
+        script += 'printf "%s" "$9" > "$3"\n';
+        script += 'printf "%s" "${10}" > "$4"\n';
+        script += 'printf "%s" "${11}" > "$5"\n';
+        script += 'printf "%s" "${12}" > "$6"\n';
+        script += 'printf "%s" "${13}" > "$7"\n';
         if (chromiumRgb.length > 0) {
-            script += `printf '%s\\n' '${chromiumRgb}' > '${Directories.generatedChromiumThemePath}'\n`;
+            script += 'printf "%s\\n" "${15}" > "${14}"\n';
         }
-        Quickshell.execDetached(["/usr/bin/bash", "-c", script]);
+        Quickshell.execDetached(["/usr/bin/bash", "-c", script, "bash", genDir,
+            Directories.generatedMaterialThemePath, Directories.generatedPalettePath,
+            Directories.generatedAppPalettePath, Directories.generatedTerminalPalettePath,
+            Directories.generatedThemeMetaPath, Directories.generatedMaterialScssPath,
+            String(colorsJson), String(paletteJson), String(appPaletteJson), String(terminalJson),
+            String(themeMeta), String(scss),
+            Directories.generatedChromiumThemePath, String(chromiumRgb)]);
     }
 
     function buildTerminalJson(c) {
