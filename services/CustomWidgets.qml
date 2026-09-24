@@ -41,7 +41,11 @@ Singleton {
     // Single process that finds and reads all manifests, outputs JSON array
     Process {
         id: _scanProcess
-        command: [Directories.scriptsPath + "/scan-widgets.sh", root.widgetsDir]
+        // KWin port: scan-widgets.sh is not shipped (no desktop widgets here); without
+        // the guard every Monitors-page visit logged "Process failed to start".
+        // Missing script -> no output -> "[]", the same result as before.
+        command: ["/usr/bin/bash", "-c", '[ -x "$1" ] || exit 0; exec "$1" "$2"', "bash",
+            Directories.scriptsPath + "/scan-widgets.sh", root.widgetsDir]
         running: false
 
         stdout: StdioCollector {
