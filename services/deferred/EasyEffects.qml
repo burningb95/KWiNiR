@@ -210,14 +210,15 @@ Singleton {
         onTriggered: root.fetchActiveState()
     }
 
-    // KWin port: poll only while the right sidebar (the only place showing this state) is
-    // open, checking at once on open; it used to run a pgrep every 5 s forever after first use.
+    // KWin port: poll only while a sidebar showing this state (right quick toggles, left
+    // Controls card) is open, checking at once on open; it used to run a pgrep every 5 s
+    // forever after first use.
     Timer {
         id: statePollTimer
         interval: 5000
         repeat: true
         triggeredOnStart: true
-        running: Config.ready && root.available && GlobalStates.sidebarRightOpen
+        running: Config.ready && root.available && (GlobalStates.sidebarRightOpen || GlobalStates.sidebarLeftOpen)
         onTriggered: root.fetchActiveState()
     }
 

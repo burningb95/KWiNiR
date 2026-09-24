@@ -7,6 +7,7 @@ import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
 import qs.services
+import qs.services.deferred
 
 Item {
     id: root
@@ -58,6 +59,21 @@ Item {
             active: GameMode.active ?? false
             onClicked: GameMode.toggle()
             visible: Config.options?.sidebar?.widgets?.controlsCard?.showGameMode ?? true
+        }
+        // KWin port: EasyEffects and caffeine, same services as the right sidebar's quick toggles.
+        Toggle {
+            btnIcon: "instant_mix"
+            tip: Translation.tr("EasyEffects")
+            active: EasyEffects.active ?? false
+            onClicked: EasyEffects.toggle()
+            visible: EasyEffects.available && (Config.options?.sidebar?.widgets?.controlsCard?.showEasyEffects ?? true)
+        }
+        Toggle {
+            btnIcon: "coffee"
+            tip: Idle.inhibit ? Translation.tr("Caffeine (keeping awake)") : Translation.tr("Caffeine")
+            active: Idle.inhibit ?? false
+            onClicked: Idle.toggleInhibit()
+            visible: Config.options?.sidebar?.widgets?.controlsCard?.showCaffeine ?? true
         }
 
         Rectangle { 

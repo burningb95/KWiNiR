@@ -2014,6 +2014,20 @@ ContentPage {
                     onCheckedChanged: Config.setNestedValue("sidebar.widgets.controlsCard.showGameMode", checked)
                 }
 
+                SettingsSwitch {
+                    buttonIcon: "instant_mix"
+                    text: Translation.tr("EasyEffects")
+                    checked: Config.options?.sidebar?.widgets?.controlsCard?.showEasyEffects ?? true
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.controlsCard.showEasyEffects", checked)
+                }
+
+                SettingsSwitch {
+                    buttonIcon: "coffee"
+                    text: Translation.tr("Caffeine")
+                    checked: Config.options?.sidebar?.widgets?.controlsCard?.showCaffeine ?? true
+                    onCheckedChanged: Config.setNestedValue("sidebar.widgets.controlsCard.showCaffeine", checked)
+                }
+
                 ContentSubsectionLabel { text: Translation.tr("Actions") }
 
                 SettingsSwitch {

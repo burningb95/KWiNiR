@@ -3650,6 +3650,8 @@ Singleton {
                         property bool showDnd: true
                         property bool showNightLight: true
                         property bool showGameMode: true
+                        property bool showEasyEffects: true // KWin port
+                        property bool showCaffeine: true    // KWin port
                         property bool showNetwork: true
                         property bool showBluetooth: true
                         property bool showSettings: true
