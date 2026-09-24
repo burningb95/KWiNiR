@@ -339,3 +339,42 @@ conditions (none in candy), and AI glyphs (candy's only candidate is Qt Assistan
 The pill's own `GlyphIcon` drawings get the same treatment through `"pill:<glyph>"` keys
 (transport controls, chevrons, close/check/trash, sidebar toggles and weather stay drawn);
 their idle/hover tint becomes opacity.
+
+## Customization backbone (phase 2, 2026-09-23)
+
+Every new option defaults to the previous behavior. Full list in commit `19610a4`.
+
+| Option / change | Notes |
+|---|---|
+| Config broken-file guard | unparsable `config.json` → copied to `.broken-<time>`, writes blocked, notification; fix the file and it reloads |
+| `Config.resetPath(prefix, "baseline"\|"factory")` | baseline = `~/.config/pillbar/baseline.json`; factory = `defaults/inir-factory-config.json` (`tools/dump-factory-config.sh`) |
+| `bar.pill.rowOrder` | hover-row order, `"|"` = divider; applied live |
+| `bar.autoHide.peek` + `ipc call pill peek` | KWin stand-in for Super-hold (Hyprland-only upstream) |
+| `clipboard.historyWatcher` | the bar runs `wl-paste --watch cliphist store` |
+| `gameMode.kwinEffects` | unloaded for the session while game mode is on, never written to kwinrc |
+| `sidebar.quickToggles.hiddenTypes` | default `["cloudflareWarp"]` (warp-cli not installed) |
+| `sidebar.right.avatarPath` | `""` = `~/.config/pillbar/avatar` |
+| `appearance.candy.*`, `appearance.userPalette` + `ipc call palette apply <name>` | palettes live in `extras/theme/colors.<name>.json` |
+| Screen snip, Tools tab capture/record/OCR | Spectacle (+ tesseract for OCR) |
+| Wallpaper apply | Plasma scripting, originals saved; `tools/restore-plasma-wallpaper.sh` |
+| Pill recorder surface | Start runs `spectacle -R region\|screen`; Spectacle owns stop + audio, so the audio chip is hidden on KWin |
+
+### Files the extraction had missed (fixed 2026-09-23)
+
+`closure.py` skipped 2-character identifiers (the `Ai` singleton) and never
+followed `.json` data or `shellPath("defaults/...")`. Result: the AI tab threw
+`Ai is not defined`, the Software tab sat on "Loading catalog...", and settings
+search had no index. Copied verbatim: `services/Ai.qml`, `services/ai/*`,
+`ObjectUtils.qml`, `defaults/ai/prompts/`, `defaults/app-catalog.json`,
+`modules/settings/settings-search-index.generated.json`.
+
+`scripts/` now exists but holds **only** `keyring/try_lookup.sh` and
+`keyring/is_unlocked.sh` (secret-tool lookups for AI API keys, against the
+running gnome-keyring). `keyring/unlock.sh` restarts gnome-keyring-daemon and is
+deliberately absent; so is everything else in upstream `scripts/`.
+
+Left-tab status on KWin: AI works (needs a provider key), Translator works
+(`trans`), Software works (pacman + paru; installs open `apps.terminal`, which
+is `kitty`), Tools works. YT Music needs `innertube-runtime.sh`/`innertube.py`
+and `python-ytmusicapi` (not installed) — pending a decision. Web Apps
+(plugins) is commented out upstream and has no tab.
