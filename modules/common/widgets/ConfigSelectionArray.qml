@@ -118,6 +118,9 @@ Flow {
             required property int index
 
             function syncRowEdges(): void {
+                // KWin port: the call is deferred (Qt.callLater); if the selector was rebuilt
+                // meanwhile (its model changed), this delegate is already torn down.
+                if (!optionRepeater || !root || !root.options) return
                 const previous = index > 0 ? optionRepeater.itemAt(index - 1) : null
                 const startsRow = index === 0
                     || (previous !== null && previous.y !== paletteButton.y)
