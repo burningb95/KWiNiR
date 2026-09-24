@@ -1110,20 +1110,19 @@ call "$1" >/dev/null`, "bash", script, save])
         const item = root._singleThumbQueue.shift()
         const maxSize = Images.thumbnailSizes[item.size] ?? 256
         const outputDir = FileUtils.parentDirectory(item.outputPath)
+        // KWin port: paths go in as arguments ($1 in, $2 out, $3 dir, $4 size). They used to
+        // be spliced in with JSON.stringify, i.e. double quotes, where $(...) and backticks
+        // still expand — a wallpaper file named `$(cmd).jpg` ran cmd when thumbnailed.
         const commandBody = root.isVideoFile(item.filePath)
-            ? "mkdir -p " + JSON.stringify(outputDir)
-                + " && [ -f " + JSON.stringify(item.outputPath) + " ] && exit 0 || { ffmpeg -hide_banner -loglevel error -y -i " + JSON.stringify(item.filePath)
-                + " -vf " + JSON.stringify(`thumbnail=n=100,scale='min(${maxSize},iw)':'min(${maxSize},ih)':force_original_aspect_ratio=decrease`)
-                + " -frames:v 1 -update 1 "
-                + " " + JSON.stringify(item.outputPath) + " >/dev/null 2>&1 && exit 1; }"
-            : "mkdir -p " + JSON.stringify(outputDir)
-                + " && [ -f " + JSON.stringify(item.outputPath) + " ] && exit 0 || { magick " + JSON.stringify(item.filePath + "[0]")
-                + " -resize " + `${maxSize}x${maxSize}` + " " + JSON.stringify(item.outputPath) + " >/dev/null 2>&1 && exit 1; }"
+            ? 'mkdir -p "$3" && [ -f "$2" ] && exit 0 || { ffmpeg -hide_banner -loglevel error -y -i "$1"'
+                + ` -vf "thumbnail=n=100,scale='min($4,iw)':'min($4,ih)':force_original_aspect_ratio=decrease"`
+                + ' -frames:v 1 -update 1  "$2" >/dev/null 2>&1 && exit 1; }'
+            : 'mkdir -p "$3" && [ -f "$2" ] && exit 0 || { magick "$1[0]" -resize "$4x$4" "$2" >/dev/null 2>&1 && exit 1; }'
 
         _singleThumbProc._key = item.key
         _singleThumbProc._filePath = item.filePath
         _singleThumbProc._outputPath = item.outputPath
-        _singleThumbProc.command = ["bash", "-c", commandBody]
+        _singleThumbProc.command = ["bash", "-c", commandBody, "bash", item.filePath, item.outputPath, outputDir, String(maxSize)]
         _singleThumbProc.running = true
     }
 
