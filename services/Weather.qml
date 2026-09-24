@@ -549,8 +549,9 @@ Singleton {
         } else {
             query = encodeURIComponent(root.location.name.split(',')[0].trim());
         }
-        const cmd = `curl -s --max-time 15 'https://wttr.in/${query}?format=j1'`;
-        fetcher.command = ["/usr/bin/bash", "-c", cmd];
+        // KWin port: argv, no shell — the city name (config, or an IP-lookup reply) can hold
+        // a `'` (encodeURIComponent leaves it alone), which broke out of the quoted URL.
+        fetcher.command = ["/usr/bin/curl", "-s", "--max-time", "15", `https://wttr.in/${query}?format=j1`];
         fetcher.running = true;
     }
 
