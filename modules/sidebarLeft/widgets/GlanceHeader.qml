@@ -197,7 +197,9 @@ Item {
                             }
                         }
 
-                        StyledToolTip { text: root.volumeMuted ? Translation.tr("Unmute") : Translation.tr("Scroll to adjust volume") }
+                        // KWin port: dropped the "Scroll to adjust volume" hint (he doesn't
+                        // want it); Unmute still shows since it's the button's click action.
+                        StyledToolTip { text: Translation.tr("Unmute"); visible: root.volumeMuted }
                     }
 
                     MouseArea {
