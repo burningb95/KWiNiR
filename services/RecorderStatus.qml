@@ -5,6 +5,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.modules.common
+import qs.services
 
 Singleton {
     id: root
@@ -135,10 +136,12 @@ Singleton {
     }
 
     // Idle poll: infrequent check for externally-started recordings
+    // KWin port: not on KWin — wf-recorder needs wlr-screencopy, which KWin lacks, so it
+    // can never be recording there (the pill records with Spectacle); saves a pgrep every 5 s.
     Timer {
         id: idlePollTimer
         interval: 5000
-        running: Config.ready && !root.isRecording
+        running: Config.ready && !root.isRecording && !CompositorService.isKWin
         repeat: true
         onTriggered: root.refreshStatus()
     }
