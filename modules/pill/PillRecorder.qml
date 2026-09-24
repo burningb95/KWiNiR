@@ -59,6 +59,14 @@ PillSurface {
     }
 
     function start(fullscreen) {
+        // KWin port: record.sh isn't shipped. Spectacle's own recorder takes
+        // over (region picker or whole screen); it has its own stop control and
+        // audio setting, so the pill just hands off and closes.
+        if (CompositorService.isKWin) {
+            Quickshell.execDetached(["/usr/bin/spectacle", "-R", fullscreen ? "screen" : "region"]);
+            root.requestClose();
+            return;
+        }
         const args = ["/usr/bin/bash", Directories.recordScriptPath];
         if (fullscreen)
             args.push("--fullscreen");
@@ -231,6 +239,8 @@ PillSurface {
             anchors.topMargin: 10 * root.s
             anchors.left: parent.left
             spacing: 8 * root.s
+            // KWin port: audio is chosen in Spectacle's recorder, not here.
+            visible: !CompositorService.isKWin
 
             Rectangle {
                 id: soundChip

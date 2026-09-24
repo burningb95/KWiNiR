@@ -96,7 +96,7 @@ Item {
     readonly property real launcherW: 430 * s
     readonly property real launcherH: 402 * s
     readonly property real recorderW: 330 * s
-    readonly property real recorderH: 176 * s
+    readonly property real recorderH: (CompositorService.isKWin ? 132 : 176) * s  // KWin port: no audio-chip row (Spectacle owns audio)
     readonly property real settingsW: 420 * s
 
     /**
