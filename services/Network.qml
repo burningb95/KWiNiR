@@ -235,9 +235,19 @@ Singleton {
         // KWin port: setpriv --pdeathsig so a killed/crashed bar leaves no orphaned monitor.
         command: ["/usr/bin/setpriv", "--pdeathsig", "TERM", "--", "nmcli", "monitor"]
         // Auto-restart if the monitor process dies (can happen after lockscreen/suspend)
-        onRunningChanged: if (!running && !root._destroying) running = true
+        // KWin port: after a 1 s delay, so an nmcli that exits at once can't respawn in a tight loop.
+        onRunningChanged: if (!running && !root._destroying) subscriberRestart.restart()
         stdout: SplitParser {
             onRead: root.update()
+        }
+    }
+
+    Timer {
+        id: subscriberRestart
+        interval: 1000
+        onTriggered: if (!root._destroying) {
+            subscriber.running = true;
+            root.update();
         }
     }
 
