@@ -44,8 +44,12 @@ and never writes KWin's config. A security and robustness audit of the whole tre
 ## Deliberately excluded
 
 iNiR's `scripts/` directory is not included, apart from two read-only keyring lookups under
-`scripts/keyring/` and the AI model-catalog fetcher `scripts/ai/discover-provider-models.py`
-(keys reach it through the environment, never argv). Its wallpaper/color generation and everything that
+`scripts/keyring/`, the AI model-catalog fetcher `scripts/ai/discover-provider-models.py`
+(keys reach it through the environment, never argv), and — for features whose buttons are in
+the bar — `scripts/clipboard-store.py` (strips browser markup from clipboard-history entries),
+`scripts/musicRecognition/recognize-music.sh` (`songrec`, `parec`, `ffmpeg`) and
+`scripts/voiceSearch/` (`pw-record` + speech-to-text via local whisper.cpp, Groq, Gemini or
+OpenAI; key through the environment). Its wallpaper/color generation and everything that
 rewrites terminal, GTK/Qt, icon or other apps' themes is also **blocked in code**, not just
 missing: `Directories.wallpaperSwitchScriptPath` points at a blocked path and
 `MaterialThemeLoader.defaultApplyExternal` is hard-wired `false`. The matching settings

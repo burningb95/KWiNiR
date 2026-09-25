@@ -532,3 +532,32 @@ after any unload the id can equal a still-loaded script's and the new script's D
 never registered — `run()` reached the other script and ours never started (fullscreen
 auto-detect for game mode was dead too). It now calls `Scripting.start()`, which runs every
 loaded, stopped script.
+
+## Scripts for existing buttons: clipboard, music recognition, voice (2026-09-25)
+
+Four upstream scripts copied **verbatim** (no patches) because QML already in the bar calls them:
+
+| Script | Called by | What was broken without it |
+|---|---|---|
+| `scripts/clipboard-store.py` | `Cliphist.decodeCommand()` pipes every copy/paste out of the history through `--filter` | **Copying from clipboard history gave an empty clipboard** (the pipe ended in a missing file). It also strips Firefox/Chromium `text/html` wrappers so pasted entries come out as clean text |
+| `scripts/musicRecognition/recognize-music.sh` | `SongRec` ← Music recognition quick toggle (in `quickToggles` list) | toggle always reported "Make sure you have songrec installed" |
+| `scripts/voiceSearch/record-voice.sh`, `transcribe-audio.py` | `VoiceSearch` ← AI chat mic (dictation), Voice search toggle | no recording, no transcription |
+
+The bar's own `wl-paste --watch cliphist store` watcher (`clipboard.historyWatcher`) is
+unchanged: upstream stores text through `clipboard-store.py` too, but the decode-time filter
+already cleans old and new entries on the way out, so the watcher wasn't touched.
+
+Music recognition: listens to the default sink's monitor (or the mic), every
+`musicRecognition.interval` s up to `timeout` s; on a match it sends a notification and, as
+upstream does without `dunstify`, opens the Shazam page in the browser.
+
+Voice: provider `auto` → local whisper.cpp if installed, else the first stored key of Groq,
+Gemini, OpenAI. Config `voiceSearch.geminiModel` was upstream's `gemini-2.5-flash`, which
+Google now 404s for new users; set to `gemini-3.1-flash-lite` (verified: exact transcript of a
+synthesized clip; `gemini-3.8-flash` was returning 503 overloaded at the time, text requests too).
+
+Still not extracted, by decision: `colors/random/random_{konachan,osu}_wall.sh` (would replace the
+Plasma wallpaper via niri/Hyprland paths), `hyprland/get_keybinds.py` (reads Hyprland config;
+a KDE-shortcuts cheatsheet was offered and declined), `videos/record.sh` (wf-recorder doesn't
+work on KWin; recorder is ported to Spectacle), `emoji/emoji-data.sh` and `setup/_scan.sh`
+(launcher/overview only, not loaded).
