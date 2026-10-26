@@ -86,6 +86,7 @@ TILING_COMMANDS = {
     "consume-or-expel-left", "consume-or-expel-right", "cycle-width", "maximize-column",
     "center-column", "float-toggle", "relayout", "adopt", "focus-column",
     "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down", "split-region",
+    "scroll-next", "scroll-prev",
 }
 CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
 # KWin port: with --quicktile (and --tiling) the stock Meta+arrow quick-tile bindings are released

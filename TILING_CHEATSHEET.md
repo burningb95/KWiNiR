@@ -9,18 +9,24 @@ its own strip.
 full-width **row**, and windows that share a row sit side by side. Everything below says
 "column"; read it as "row" on a portrait monitor.
 
-## New windows open over a tiled window
+## New windows take a place; the replaced window waits (scroll with Meta+Shift+↑/↓)
 
-With "New windows open over the focused window" on (Settings › Tiling › Layout, default on), a window
-you open (from Latte, a launcher, a terminal) does **not** get a column or region of its own: it sits
-exactly over a tiled window of the **same app** if one is on screen, otherwise over the focused
-window of that monitor. Nothing scrolls and nothing else is minimized. Closing it uncovers the
-window under it; closing the window under it hands its cell to the one on top.
-- Move it into the grid: `Meta+arrow` (regions monitor) / `Meta+Alt+1…6` / the move keys; it joins
-  next to or under the window it covered.
-- Drag it by the title bar: it floats where you drop it. `Meta+Alt+V` floats it too.
-- Raise the covered window by focusing it (Alt+Tab, click, the focus keys).
-- The first window on a monitor (nothing to open over), dialogs and floating windows tile/float as usual.
+With "New windows take the focused window's place" on (Settings › Tiling › Layout, default on), a
+window you open (from Latte, a launcher, a terminal) does **not** get a column or region of its own:
+it takes the place of a tiled window of the **same app** if one is on screen, otherwise of the
+focused window on that monitor. Nothing scrolls and no other visible window moves.
+- The window it replaced goes to that monitor's **reserve**: hidden (minimized) and waiting.
+- **`Meta+Shift+↓` / `Meta+Shift+↑`** replace the *focused* window with the next / previous window
+  waiting in the reserve (a rotation: the one you replace joins the other end of the queue). Only the
+  focused cell changes; the rest of the layout stays put.
+- **Per monitor, always.** Each monitor (and virtual desktop) has its own reserve. Scrolling on one
+  monitor never pulls a window from another. A window you drag to another monitor stays there and
+  belongs to that monitor's layout from then on.
+- Closing the new window brings back the one it replaced. Restoring a waiting window (taskbar, Latte,
+  Alt+Tab) puts it in the focused cell and the one that was there waits instead.
+- To keep a window visible for good, put it in its own cell: `Meta+arrow` / `Meta+Alt+1…6` move the
+  focused window; drag a window by its title bar into another region; `Meta+Alt+V` floats it.
+- The first window on a monitor (nothing to replace), dialogs and floating windows tile/float as usual.
 
 ## Two modes per monitor
 

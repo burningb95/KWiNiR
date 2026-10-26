@@ -29,7 +29,7 @@ var DEFAULTS = {
     struts: { left: 0, right: 0, top: 0, bottom: 0 },   // px kept clear on every tiling output
     regionOutputs: [],                // outputs that use fixed regions (KWin's tile layout) instead of the strip
     regionSplits: {},                 // output -> [base-rect key]: tiles of KWin's layout split top / bottom (Ctrl+Meta+S)
-    newWindowOverlay: true,           // a new window opens OVER a tiled one (same cell) instead of getting a cell of its own
+    newWindowOverlay: true,           // a new window takes the focused window's cell; that window waits in the monitor's reserve
     arrowKeysScrollStrips: false,     // Meta+arrow on a scrolling monitor: false = leave it alone, true = move/snap columns
     regionsNewWindow: "smart",        // "smart": same app's slot, else an empty slot, else the focused one | "focused"
     portraitVertical: true,           // portrait outputs scroll vertically (rows) instead of columns
@@ -61,7 +61,7 @@ function makeColumn(frac) { return { windows: [], frac: frac, prevFrac: null, fo
 // vertical: the strip runs top to bottom (portrait outputs) and a column's windows sit side by
 // side; everything below is written in main axis (along the strip) / cross axis (across it).
 // weights: window id -> relative size across the strip axis (missing = 1).
-function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null, vertical: false, weights: {}, align: null }; }
+function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null, vertical: false, weights: {}, align: null, reserve: [] }; }
 
 function resetWeights(strip, col) {
     for (var i = 0; i < col.windows.length; i++) delete strip.weights[wid(col.windows[i])];
@@ -435,7 +435,7 @@ function zoneDerive(base, splits) {
 }
 
 function makeZone(base, splits) {
-    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base };
+    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base, reserve: [] };
     zoneSetRects(z, zoneDerive(base, splits));
     z.focusedSlot = largestSlot(z.slots);
     return z;
@@ -712,7 +712,6 @@ var state = {
     strips: {},        // key "output|desktopId" -> strip (+ outputName, desktopId)
     zones: {},         // key "Z:output|desktopId" -> zone (fixed regions), for outputs in regions mode
     modeFlip: {},      // output name -> "strip" | "regions": toggle-mode overrides cfg.regionOutputs
-    overlays: {},      // window id -> {w, host}: windows sitting over a tiled window's cell (not in any container)
     splits: {},        // output name -> [baseKey]: tiles split top / bottom (persisted by the bar)
     regionsSig: "",    // signature of the tile layouts last seen, to notice Meta+T edits
     byWin: {},         // window id -> strip or zone key
@@ -847,11 +846,17 @@ function containerByKey(key) {
 function contOf(w) { return containerByKey(state.byWin[wid(w)]); }
 
 function windowsOf(c) {
-    if (c.kind === "zone") return zoneWindows(c);
     var wins = [];
-    for (var i = 0; i < c.columns.length; i++)
+    if (c.kind === "zone") wins = zoneWindows(c);
+    else for (var i = 0; i < c.columns.length; i++)
         for (var r = 0; r < c.columns[i].windows.length; r++) wins.push(c.columns[i].windows[r]);
-    return wins;
+    return wins.concat(c.reserve);   // the reserve travels with its monitor's windows
+}
+
+function reserveIndex(c, w) {
+    var id = wid(w);
+    for (var i = 0; i < c.reserve.length; i++) if (wid(c.reserve[i]) === id) return i;
+    return -1;
 }
 
 function containerFocused(c) { return c.kind === "zone" ? zoneFocusedWindow(c) : stripFocusedWindow(c); }
@@ -900,7 +905,11 @@ function releaseWindow(w) {
 function untile(w) {
     var id = wid(w), c = contOf(w);
     if (state.byWin[id] === undefined) return null;
-    if (c) { if (c.kind === "zone") zoneRemove(c, w); else stripRemove(c, w); }
+    if (c) {
+        var ri = reserveIndex(c, w);
+        if (ri >= 0) c.reserve.splice(ri, 1);
+        else if (c.kind === "zone") zoneRemove(c, w); else stripRemove(c, w);
+    }
     delete state.byWin[id];
     releaseWindow(w);
     return c;
@@ -956,7 +965,7 @@ function layoutAll(focusTarget) {
     if (state.released || !state.started) return;
     if (state.applying) { state.pendingLayout = true; return; }
     state.applying = true;
-    var before = workspace.activeWindow, target = focusTarget || null, infos = {}, orphans = [];
+    var before = workspace.activeWindow, target = focusTarget || null;
     try {
         var cur = workspace.currentDesktop, conts = allContainers();
         for (var ci = 0; ci < conts.length; ci++) {
@@ -978,7 +987,6 @@ function layoutAll(focusTarget) {
             }
             var entries = strip.kind === "zone" ? zoneLayout(strip, area, cfg) : computeLayout(strip, area, cfg);
             strip.lastLayout = entries;
-            for (var ei = 0; ei < entries.length; ei++) infos[wid(entries[ei].window)] = { rect: entries[ei].rect, visible: entries[ei].visible };
             var hide = [];
             for (var i = 0; i < entries.length; i++) {
                 var e = entries[i], w = e.window, id = wid(w);
@@ -996,27 +1004,18 @@ function layoutAll(focusTarget) {
             if (!target && before && state.byWin[wid(before)] === strip.key)
                 target = entriesVisible(entries, before) ? before : containerFocused(strip);
         }
-        for (var oid in state.overlays) {
-            var ov = state.overlays[oid], ow = ov.w;
-            if (ow.deleted) { delete state.overlays[oid]; continue; }
-            var hostKey = ov.host.deleted ? undefined : state.byWin[wid(ov.host)];
-            if (hostKey === undefined) { orphans.push(ow); continue; }       // its host left the grid
-            var hostCont = containerByKey(hostKey), info = infos[wid(ov.host)];
-            if (!hostCont || hostCont.desktopId !== cur.id || !info || ow.fullScreen || state.interactive[oid]) continue;
-            if (info.visible) {
-                if (state.scriptMin[oid]) { delete state.scriptMin[oid]; setMinimized(ow, false); }
-                if (!ow.minimized) writeGeometry(ow, info.rect);
-            } else if (!ow.minimized) {
-                setMinimized(ow, true); state.scriptMin[oid] = true;
+        // The monitors' reserves: windows waiting for a cell are hidden (minimized by us).
+        for (var rci = 0; rci < conts.length; rci++) {
+            var rc = conts[rci];
+            if (rc.desktopId !== cur.id) continue;
+            for (var ri = 0; ri < rc.reserve.length; ri++) {
+                var rw = rc.reserve[ri];
+                if (rw.deleted || rw.minimized || rw.fullScreen) continue;
+                setMinimized(rw, true); state.scriptMin[wid(rw)] = true;
             }
         }
     } finally {
         state.applying = false;
-    }
-    for (var oi = 0; oi < orphans.length; oi++) {
-        delete state.overlays[wid(orphans[oi])];
-        if (!tile(orphans[oi])) continue;
-        state.pendingLayout = true;
     }
     if (target && !target.deleted && workspace.activeWindow !== target) {
         state.applying = true;
@@ -1066,7 +1065,6 @@ function stripOf(w) { return contOf(w); }   // a strip or a zone: callers that n
 // Window moved desktop/output (or became tileable/untileable): redo its membership.
 function retile(w) {
     if (state.released) return;
-    delete state.overlays[wid(w)];   // moved / restored on its own: it is a normal tiled window from now on
     var old = contOf(w);
     var wasKey = old ? old.key : null;
     untile(w);
@@ -1144,9 +1142,11 @@ function wireWindow(w) {
             // The user minimized a tiled window: it leaves the strip until restored.
             if (stripOf(w)) { delete state.scriptMin[i]; untile(w); scheduleLayout(); }
         } else if (state.scriptMin[i]) {
-            // Un-minimized behind our back (taskbar / Alt+Tab): it was activated, which
-            // scrolls it into view. Forget that we hid it.
+            // Un-minimized behind our back (taskbar / Latte / Alt+Tab). A window waiting in the reserve
+            // takes the focused cell; any other was activated, which scrolls it into view.
             delete state.scriptMin[i];
+            var rc = contOf(w);
+            if (rc && reserveIndex(rc, w) >= 0) bringFromReserve(w, rc);
         } else if (!stripOf(w)) {
             retile(w);
         }
@@ -1197,12 +1197,6 @@ function wireWindow(w) {
         delete state.interactive[i];
         if (state.dragId === i) state.dragId = null;
         var strip = stripOf(w);
-        if (state.overlays[i] && rec) {
-            // dragged out from over its host: it floats where it was dropped; a resize snaps back
-            if (!rec.resizing) { delete state.overlays[i]; state.floating[i] = true; }
-            scheduleLayout();
-            return;
-        }
         if (!rec || !strip || state.released) { scheduleLayout(); return; }
         var cur = { x: g.x, y: g.y, width: g.width, height: g.height };
         if (rec.resizing) finishResize(w, strip, rec, cur);
@@ -1243,6 +1237,7 @@ function verifyDirty() {
 
 function cloneStrip(strip) {
     var cp = makeStrip(), id;
+    cp.reserve = strip.reserve.slice();
     cp.focusedColumn = strip.focusedColumn; cp.scrollX = strip.scrollX; cp.vertical = strip.vertical; cp.align = strip.align;
     for (id in strip.weights) cp.weights[id] = strip.weights[id];
     cp.columns = strip.columns.map(function (col) {
@@ -1494,15 +1489,16 @@ function finishMove(w, strip, rec, cur) {
     reveal(target, at2);
     layoutAll(w);
 }
-// A window that is NOT in any container but shares a tiled window's cell: it is written the
-// host's rectangle on every layout, is shown/hidden with the host, and nothing else about the
-// layout (columns, slots, scroll) changes. KWin puts the newest window on top; activating the
-// host raises it again.
+// A new window takes the cell of a tiled window on its monitor instead of getting a cell of its own
+// (nothing scrolls, nothing else is hidden); the window it replaced goes to the monitor's RESERVE,
+// hidden (minimized by us) until it is scrolled back (Meta+Shift+Up/Down), activated, or the new
+// window closes. Each (monitor, desktop) has its own reserve: nothing is ever pulled from another
+// monitor.
 //
-// Which window a new one opens over: a window of the same app that is on screen, else the focused
+// Which window a new one replaces: a window of the same app that is on screen, else the focused
 // tiled window of that monitor, else any window on screen. Returns null when there is none (an
 // empty monitor, a floating window, a dialog): the window then tiles normally.
-function overlayTarget(w) {
+function openTarget(w) {
     if (!cfg.newWindowOverlay || state.released || !state.started || state.floating[wid(w)] || !isTileable(w)) return null;
     var out = w.output.name;
     if (!tilingOutput(out) || !outputByName(out)) return null;
@@ -1511,7 +1507,7 @@ function overlayTarget(w) {
     if (!c || c.desktopId !== workspace.currentDesktop.id) return null;
     var shown = {};
     (c.lastLayout || []).forEach(function (e) { if (e.visible && !e.window.minimized && !e.window.deleted) shown[wid(e.window)] = e.window; });
-    var cands = windowsOf(c).filter(function (x) { return shown[wid(x)] && x !== w; });
+    var cands = windowsOf(c).filter(function (x) { return shown[wid(x)] && x !== w && reserveIndex(c, x) < 0; });
     if (!cands.length) return null;
     var focus = containerFocused(c), app = String(w.resourceClass || "");
     var same = cands.filter(function (x) { return String(x.resourceClass || "") === app; });
@@ -1519,31 +1515,42 @@ function overlayTarget(w) {
     return cands.indexOf(focus) >= 0 ? focus : cands[0];
 }
 
-function overlaysOf(host) {
-    var out = [];
-    for (var id in state.overlays) if (state.overlays[id].host === host) out.push(state.overlays[id]);
-    return out;
+// `w` takes `old`'s cell; `old` waits in the reserve (end = most recently replaced).
+function swapIntoCell(c, old, w, toFront) {
+    replaceInContainer(c, old, w);
+    state.byWin[wid(old)] = c.key;
+    if (toFront) c.reserve.unshift(old); else c.reserve.push(old);
 }
 
-// The overlay becomes a real member of the grid, next to / under its host.
-function unoverlay(ow) {
-    var id = wid(ow), o = state.overlays[id];
-    if (!o) return false;
-    delete state.overlays[id];
-    var c = contOf(o.host);
-    if (!c) { tile(ow); return true; }
-    if (c.kind === "zone") {
-        var at = zoneFind(c, o.host);
-        zoneAdd(c, ow, at ? at.s : c.focusedSlot);
-    } else {
-        var at2 = stripFind(c, o.host);
-        stripInsertColumn(c, ow, at2 ? at2.c + 1 : c.columns.length, cfg.defaultWidth);
-        reveal(c, c.focusedColumn);
-    }
-    state.byWin[id] = c.key;
+// A reserve window came back on its own (Alt+Tab, Latte, a click): it takes the focused cell.
+function bringFromReserve(w, c) {
+    var ri = reserveIndex(c, w);
+    if (ri < 0) return false;
+    var f = containerFocused(c);
+    c.reserve.splice(ri, 1);
+    if (f && f !== w) swapIntoCell(c, f, w, false);
+    else { state.byWin[wid(w)] = c.key; tile(w); }
+    delete state.scriptMin[wid(w)];
+    containerFocusWindow(c, w);
     forgetRects(c);
-    layoutAll(ow);
+    layoutAll(w);
     return true;
+}
+
+// Meta+Shift+Down / Up: the focused window is replaced by the next / previous window waiting in
+// this monitor's reserve (a rotation: the replaced one joins the other end of the queue).
+function scrollReserve(dir) {
+    var c = currentContainer();
+    if (!c) return { ok: false, error: "no tiling monitor" };
+    var f = containerFocused(c);
+    if (!f || !c.reserve.length) return { ok: true, changed: false };
+    var r = dir > 0 ? c.reserve.shift() : c.reserve.pop();
+    swapIntoCell(c, f, r, dir < 0);
+    delete state.scriptMin[wid(r)];
+    containerFocusWindow(c, r);
+    forgetRects(c);
+    layoutAll(r);
+    return { ok: true, changed: true };
 }
 
 // `old` leaves its cell and `nw` takes it.
@@ -1561,9 +1568,12 @@ function replaceInContainer(c, old, nw) {
 
 function onWindowAdded(w) {
     wireWindow(w);
-    var host = overlayTarget(w);
+    var host = openTarget(w);
     if (host) {
-        state.overlays[wid(w)] = { w: w, host: host };
+        var c = contOf(host);
+        swapIntoCell(c, host, w, false);
+        containerFocusWindow(c, w);
+        forgetRects(c);
         layoutAll(w);
         return;
     }
@@ -1573,47 +1583,39 @@ function onWindowAdded(w) {
 }
 
 function onWindowRemoved(w) {
-    var id = wid(w), strip = stripOf(w), wasActive = state.lastActive === id;
-    var asOverlay = state.overlays[id] || null;
-    delete state.overlays[id];
-    var heirs = overlaysOf(w), heir = null;
-    if (strip && heirs.length) {
-        // the host closed with windows over it: the newest one takes its cell
-        heir = heirs[heirs.length - 1].w;
-        delete state.overlays[wid(heir)];
-        replaceInContainer(strip, w, heir);
-        for (var hi = 0; hi < heirs.length - 1; hi++) heirs[hi].host = heir;
-        strip = null;
-    }
+    var id = wid(w), strip = stripOf(w), wasActive = state.lastActive === id, heir = null;
     if (strip) {
-        if (strip.kind === "zone") zoneRemove(strip, w); else stripRemove(strip, w);
+        var ri = reserveIndex(strip, w);
+        if (ri >= 0) {
+            strip.reserve.splice(ri, 1);                       // it was only waiting
+        } else if (strip.reserve.length) {
+            heir = strip.reserve.pop();                        // the most recently replaced window comes back
+            replaceInContainer(strip, w, heir);
+            delete state.scriptMin[wid(heir)];
+        } else if (strip.kind === "zone") zoneRemove(strip, w);
+        else stripRemove(strip, w);
         delete state.byWin[id];
     }
     delete state.scriptMin[id]; delete state.lastRect[id]; delete state.expectMin[id];
     delete state.interactive[id]; delete state.wired[id]; delete state.floating[id];
     delete state.geomDirty[id]; delete state.fixes[id];
     if (state.dragId === id) state.dragId = null;
-    if (heir) {
-        forgetRects(contOf(heir));
-        layoutAll(wasActive ? heir : null);
-    } else if (asOverlay) {
-        // an overlay closed: focus goes back to what it was over
-        var hc = contOf(asOverlay.host);
-        layoutAll(wasActive ? asOverlay.host : null);
-        if (wasActive && hc) scheduleRefocus(hc.key);
-    } else if (strip) {
+    if (strip) {
         if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
+        if (heir) { containerFocusWindow(strip, heir); forgetRects(strip); }
         layoutAll(wasActive ? containerFocused(strip) : null);
         if (wasActive) scheduleRefocus(strip.key);
     } else {
         scheduleLayout();
     }
 }
+
 function onWindowActivated(w) {
     state.lastActive = w ? wid(w) : null;
     if (!w || state.released) return;
     var strip = stripOf(w);
     if (!strip) return;
+    if (reserveIndex(strip, w) >= 0) { bringFromReserve(w, strip); return; }
     if (strip.kind === "zone") {
         if (zoneFocusWindow(strip, w)) layoutAll(w);
         return;
@@ -1626,8 +1628,8 @@ function onWindowActivated(w) {
 // ---------------------------------------------------------------- Commands
 function currentContainer() {
     var aw = workspace.activeWindow;
-    if (aw && state.overlays[wid(aw)]) aw = state.overlays[wid(aw)].host;   // focus keys move on from what it sits over
     var s = aw ? stripOf(aw) : null;
+    if (s && reserveIndex(s, aw) >= 0) s = null;
     if (s) { containerFocusWindow(s, aw); return s; }   // commands act on what is really focused
     var out = workspace.activeScreen, name = null;
     if (out && tilingOutput(out.name)) name = out.name;
@@ -1709,7 +1711,7 @@ function releaseAll() {
         var w = list[i];
         if (state.scriptMin[wid(w)]) { delete state.scriptMin[wid(w)]; setMinimized(w, false); n++; }
     }
-    state.strips = {}; state.zones = {}; state.byWin = {}; state.overlays = {};
+    state.strips = {}; state.zones = {}; state.byWin = {};
     sendReport(true);
     return n;
 }
@@ -1750,6 +1752,8 @@ function snapDir(dir) {
 }
 
 var COMMANDS = {
+    "scroll-next": function () { return scrollReserve(1); },
+    "scroll-prev": function () { return scrollReserve(-1); },
     "snap-left": function () { return snapDir("left"); },
     "snap-right": function () { return snapDir("right"); },
     "snap-up": function () { return snapDir("up"); },
@@ -1784,12 +1788,6 @@ var COMMANDS = {
     "float-toggle": function () {
         var w = workspace.activeWindow;
         if (!w) return { ok: false, error: "no active window" };
-        if (state.overlays[wid(w)]) {                       // over a tiled window: it just floats there
-            delete state.overlays[wid(w)];
-            state.floating[wid(w)] = true;
-            layoutAll(w);
-            return { ok: true, floating: true };
-        }
         var strip = stripOf(w);
         if (strip) {
             state.floating[wid(w)] = true;
@@ -1871,21 +1869,11 @@ var COMMANDS = {
 
 var IDLE_OK = { "config": 1, "dump": 1, "windows": 1, "release-all": 1 };
 
-// Commands that move or resize the focused window make an overlay a real member of the grid first.
-var PROMOTES = { "move-column-left": 1, "move-column-right": 1, "move-window-up": 1, "move-window-down": 1,
-                 "consume-left": 1, "consume-right": 1, "expel": 1, "consume-or-expel-left": 1,
-                 "consume-or-expel-right": 1, "cycle-width": 1, "maximize-column": 1, "send-to-slot": 1,
-                 "snap-left": 1, "snap-right": 1, "snap-up": 1, "snap-down": 1 };
-
 function runCommand(name, arg) {
     var fn = COMMANDS[name];
     if (!fn) return { ok: false, error: "unknown command" };
     if (!state.started && !IDLE_OK[name]) return { ok: false, error: "not configured yet" };
-    try {
-        var aw = workspace.activeWindow;
-        if (PROMOTES[name] && aw && state.overlays[wid(aw)]) unoverlay(aw);
-        return fn(arg) || { ok: true };
-    }
+    try { return fn(arg) || { ok: true }; }
     catch (e) { log("ERROR in command " + name + ": " + e); return { ok: false, error: String(e) }; }
 }
 
@@ -1909,6 +1897,8 @@ var SHORTCUTS = [
     { text: "Center column", key: "Meta+Alt+C", cmd: "center-column" },
     { text: "Toggle floating", key: "Meta+Alt+V", cmd: "float-toggle" },
     { text: "Split / merge the focused region (top and bottom)", key: "Ctrl+Meta+S", cmd: "split-region" },
+    { text: "Scroll: replace the focused window with the next waiting one", key: "Meta+Shift+Down", cmd: "scroll-next" },
+    { text: "Scroll: replace the focused window with the previous waiting one", key: "Meta+Shift+Up", cmd: "scroll-prev" },
     { text: "Snap left", key: "Meta+Left", cmd: "snap-left" },
     { text: "Snap right", key: "Meta+Right", cmd: "snap-right" },
     { text: "Snap up", key: "Meta+Up", cmd: "snap-up" },

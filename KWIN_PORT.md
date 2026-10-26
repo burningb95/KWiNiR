@@ -628,11 +628,18 @@ itself is never written (the Tile scripting API has no split). The split list li
 and comes back with the config, so it survives a restart. Meta+arrow on a regions monitor only
 moves a window to the neighbouring slot (`zoneNeighbour`; no stack reorder, no monitor hop); on a
 scrolling monitor it does nothing unless `tiling.arrowKeysScrollStrips`.
-*Open over (round 6):* `tiling.newWindowOverlay` (default on): `overlayTarget` picks the window a new
-window opens over (same app on screen, else the focused one) and `state.overlays` records it; the overlay
-is in no container and `layoutAll` writes it its host's rectangle and hides/shows it with the host.
-Host closed: the newest overlay takes the cell (`replaceInContainer`); host left the grid: the overlay
-tiles normally; Meta+arrow / move keys promote it into the grid (`unoverlay`); dragging it floats it.
+*Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
+name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
+focused one); the new window takes its cell (`replaceInContainer`) and the replaced window goes to
+the **reserve** of that (monitor, desktop) container (`container.reserve`, hidden = minimized by us
+through the normal `layoutAll` hide path). A reserve is per container, so it can never hold or pull a
+window of another monitor; a window dragged elsewhere is untiled and re-tiled there. `scroll-next` /
+`scroll-prev` (Meta+Shift+Down / Up, free keys; Meta+Shift+Left/Right stay KDE's move-to-screen)
+rotate the focused cell through that reserve (`scrollReserve`). Closing a tiled window with a
+non-empty reserve hands its cell to the most recently replaced one; a reserve window restored by
+the user (taskbar, Latte, Alt+Tab) takes the focused cell (`bringFromReserve`). Mode flips and
+output loss carry the reserve along (`windowsOf`). The first overlay design (covered, not minimized)
+was dropped because z-order and "who is on top" could not be tracked reliably.
 *Modifier drag floats:* a move that starts inside the window rather than on its title bar
 (`workspace.cursorPos` vs `clientGeometry`; KWin exposes no keyboard-modifier API) floats the
 window; resizes never float. *Quick tile:* KWin's Meta+arrow keys set `window.tile`; on a tiled
@@ -683,7 +690,7 @@ Released: Meta+Alt+K and Meta+Alt+L (keyboard-layout switching), Meta+Alt+R (scr
   persistent trace is the `KWiNiR Tiling: *` entries in `kglobalshortcutsrc`, which the bridge
   removes whenever tiling is off.
 
-**Verification.** `tools/tiling-test.mjs` (layout and regions model, 39), `tiling-glue-test.mjs` (fake KWin: 77,
+**Verification.** `tools/tiling-test.mjs` (layout and regions model, 39), `tiling-glue-test.mjs` (fake KWin: 79,
 incl. hotplug, desktops, drag resize/move, portrait), `tiling-bridge-test.py` (validators, 17), `tiling-live-test.py` and
 `tiling-live-multi.py` (real KWin, throwaway windows), `tiling-e2e-test.py` (the staged bar on a
 temp config: IPC, bridge, shortcuts, release on exit). All in `~/.local/share/Fancy-Floating-Bar/tools/`.

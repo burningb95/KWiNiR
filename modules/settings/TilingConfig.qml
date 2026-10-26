@@ -147,10 +147,10 @@ ContentPage {
             ConfigSwitch {
                 Layout.fillWidth: true
                 buttonIcon: "layers"
-                text: Translation.tr("New windows open over the focused window")
+                text: Translation.tr("New windows take the focused window's place")
                 checked: Config.options?.tiling?.newWindowOverlay ?? true
                 onCheckedChanged: Config.setNestedValue("tiling.newWindowOverlay", checked)
-                StyledToolTip { text: Translation.tr("A window you open (from Latte, a launcher, a terminal) sits exactly over a tiled window of the same app, or the focused one, instead of getting a column or region of its own. Nothing scrolls and nothing else is minimized. Move it into the grid with Meta + arrows or Meta+Alt+1…6, drag it out to float it, and closing it uncovers the window under it. The first window on a monitor still tiles normally.") }
+                StyledToolTip { text: Translation.tr("A window you open (from Latte, a launcher, a terminal) takes the place of a tiled window of the same app, or of the focused one, instead of getting a column or region of its own. Nothing scrolls and no other visible window moves. The window it replaced waits, hidden, in that monitor's reserve: Meta+Shift+Up / Down swap it back in, closing the new window brings it back, and restoring it from the taskbar does too. The first window on a monitor still tiles normally.") }
             }
 
             ConfigSwitch {
@@ -490,6 +490,7 @@ ContentPage {
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
                         { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
                         { keys: "Meta + ← → ↑ ↓", what: Translation.tr("Regions mode: move the window to the neighbouring region that way (within the monitor): it swaps with a single window there, joins a stack, or fills an empty region. Scrolling monitors: nothing, unless enabled above") },
+                        { keys: "Meta+Shift+↓ / ↑", what: Translation.tr("Replace the focused window with the next / previous window waiting on this monitor (only ever this monitor's own windows)") },
                         { keys: "Ctrl+Meta+S", what: Translation.tr("Regions mode: split the focused region into a top and a bottom half, or merge it back") },
                         { keys: "Meta+Alt+G", what: Translation.tr("Switch this monitor between scrolling columns and fixed regions") },
                         { keys: "Meta+Alt+1 … 6", what: Translation.tr("Regions mode: send the window to region 1 … 6") }
