@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -17,8 +19,8 @@ ContentPage {
     SettingsTaskNavigator {
         icon: "view_column"
         title: Translation.tr("Tiling")
-        description: Translation.tr("niri-style scrolling columns on KWin: which monitors tile, spacing, portrait behaviour, which apps stay floating, and the keys.")
-        summary: Translation.tr("Layout · apps · keys")
+        description: Translation.tr("niri-style scrolling columns on KWin, or fixed regions from KDE's tile editor: which monitors tile and how, spacing, portrait behaviour, which apps stay floating, and the keys.")
+        summary: Translation.tr("Layout · regions · apps · keys")
         currentValue: root.activeSection
         onSelected: value => root.activeSection = value
         searchAliases: ({
@@ -26,6 +28,10 @@ ContentPage {
             "struts": "layout",
             "portrait": "layout",
             "dock": "layout",
+            "regions": "regions",
+            "slots": "regions",
+            "zones": "regions",
+            "tile editor": "regions",
             "float": "apps",
             "never tile": "apps",
             "shortcuts": "keys",
@@ -33,6 +39,7 @@ ContentPage {
         })
         options: [
             { displayName: Translation.tr("Layout"), icon: "grid_view", value: "layout" },
+            { displayName: Translation.tr("Regions"), icon: "dashboard", value: "regions" },
             { displayName: Translation.tr("Apps"), icon: "apps", value: "apps" },
             { displayName: Translation.tr("Keys"), icon: "keyboard", value: "keys" }
         ]
@@ -252,6 +259,106 @@ ContentPage {
         }
     }
 
+    // Monitors that use fixed regions. Writes only on a real change (switches fire on init).
+    function regionOutputOn(name: string): bool {
+        return Array.from(Config.options?.tiling?.regionOutputs ?? []).includes(name)
+    }
+
+    function setRegionOutput(name: string, on: bool): void {
+        const cur = Array.from(Config.options?.tiling?.regionOutputs ?? [])
+        if (cur.includes(name) === on)
+            return
+        Config.setNestedValue("tiling.regionOutputs", on ? cur.concat([name]) : cur.filter(n => n !== name))
+    }
+
+    Process {
+        id: tileEditor
+        command: ["qdbus6", "org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component.invokeShortcut", "Edit Tiles"]
+    }
+
+    SettingsTaskLoader {
+        requested: root.activeSection === "regions"
+        sourceComponent: Component {
+    SettingsCardSection {
+        settingsTaskSection: "regions"
+        expanded: true
+        icon: "dashboard"
+        title: Translation.tr("Regions")
+
+        SettingsGroup {
+            StyledText {
+                Layout.fillWidth: true
+                text: Translation.tr("A monitor in regions mode does not scroll: its windows sit in fixed slots, nothing is minimized, and a slot holds a stack of windows. The slots are the tiles of KDE's own tile layout for that monitor, so you edit them in KDE's tile editor (Meta+T) and the change shows up here within a couple of seconds.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                wrapMode: Text.WordWrap
+            }
+
+            RippleButtonWithIcon {
+                materialIcon: "edit"
+                mainText: Translation.tr("Open KDE's tile editor")
+                onClicked: tileEditor.running = true
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Monitors using fixed regions")
+                Repeater {
+                    model: Quickshell.screens
+                    ConfigSwitch {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        buttonIcon: "dashboard"
+                        text: modelData.name + "  (" + modelData.width + "×" + modelData.height + ")"
+                        checked: root.regionOutputOn(modelData.name)
+                        onCheckedChanged: root.setRegionOutput(modelData.name, checked)
+                    }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Meta+Alt+G flips the focused monitor between scrolling columns and regions for the moment; this list is what it starts as. Only monitors that tile (Layout › Monitors) are affected.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Where a new window goes")
+                ConfigSelectionArray {
+                    currentValue: Config.options?.tiling?.regionsNewWindow ?? "smart"
+                    onSelected: newValue => Config.setNestedValue("tiling.regionsNewWindow", newValue)
+                    options: [
+                        { displayName: Translation.tr("Smart"), icon: "auto_awesome", value: "smart" },
+                        { displayName: Translation.tr("Focused region"), icon: "center_focus_strong", value: "focused" }
+                    ]
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Smart: the region already holding a window of the same app, otherwise the largest empty region, otherwise the focused one. Focused region: always where you are. Windows share a region by stacking.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Dragging a window drops it into the region under it. Region borders are fixed: resize them in the tile editor.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                wrapMode: Text.WordWrap
+            }
+
+            PageResetFooter {
+                Layout.fillWidth: true
+                scope: ["tiling"]
+                description: Translation.tr("Puts every tiling option back, including these.")
+            }
+        }
+    }
+        }
+    }
+
     SettingsTaskLoader {
         requested: root.activeSection === "apps"
         sourceComponent: Component {
@@ -349,7 +456,9 @@ ContentPage {
                         { keys: "Meta+Alt+R", what: Translation.tr("Cycle the column width (the height of a row on a portrait monitor)") },
                         { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
-                        { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") }
+                        { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
+                        { keys: "Meta+Alt+G", what: Translation.tr("Switch this monitor between scrolling columns and fixed regions") },
+                        { keys: "Meta+Alt+1 … 6", what: Translation.tr("Regions mode: send the window to region 1 … 6") }
                     ]
                     RowLayout {
                         required property var modelData
