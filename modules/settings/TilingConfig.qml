@@ -146,6 +146,15 @@ ContentPage {
 
             ConfigSwitch {
                 Layout.fillWidth: true
+                buttonIcon: "layers"
+                text: Translation.tr("New windows open over the focused window")
+                checked: Config.options?.tiling?.newWindowOverlay ?? true
+                onCheckedChanged: Config.setNestedValue("tiling.newWindowOverlay", checked)
+                StyledToolTip { text: Translation.tr("A window you open (from Latte, a launcher, a terminal) sits exactly over a tiled window of the same app, or the focused one, instead of getting a column or region of its own. Nothing scrolls and nothing else is minimized. Move it into the grid with Meta + arrows or Meta+Alt+1…6, drag it out to float it, and closing it uncovers the window under it. The first window on a monitor still tiles normally.") }
+            }
+
+            ConfigSwitch {
+                Layout.fillWidth: true
                 buttonIcon: "center_focus_strong"
                 text: Translation.tr("Always center a single column")
                 checked: Config.options?.tiling?.centerSingle ?? false
@@ -343,7 +352,7 @@ ContentPage {
 
             StyledText {
                 Layout.fillWidth: true
-                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Dragging a window drops it into the region under it. Region borders are fixed: resize them in the tile editor.")
+                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Ctrl+Meta+S splits the focused region into a top and a bottom half (again to merge them). Meta + arrows move a window to the neighbouring region. Dragging a window drops it into the region under it. Region borders are fixed: resize them in the tile editor.")
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 wrapMode: Text.WordWrap
@@ -447,10 +456,19 @@ ContentPage {
             ConfigSwitch {
                 Layout.fillWidth: true
                 buttonIcon: "keyboard_arrow_right"
-                text: Translation.tr("Meta + arrow keys snap and move tiled windows")
+                text: Translation.tr("Meta + arrow keys belong to the tiler")
                 checked: Config.options?.tiling?.takeOverQuickTile ?? true
                 onCheckedChanged: Config.setNestedValue("tiling.takeOverQuickTile", checked)
                 StyledToolTip { text: Translation.tr("While tiling runs, KDE's quick-tile keys (Meta + arrows) are released and used by the tiler; they are given back when tiling stops or this is switched off. Floating windows still get KDE's quick tile. REVERT-tiling-quicktile.sh in ~/.local/share/Fancy-Floating-Bar restores them if the bar ever dies mid-run.") }
+            }
+
+            ConfigSwitch {
+                Layout.fillWidth: true
+                buttonIcon: "view_column"
+                text: Translation.tr("Meta + arrows also move columns on scrolling monitors")
+                checked: Config.options?.tiling?.arrowKeysScrollStrips ?? false
+                onCheckedChanged: Config.setNestedValue("tiling.arrowKeysScrollStrips", checked)
+                StyledToolTip { text: Translation.tr("Off (default): on a scrolling monitor Meta + arrows do nothing to tiled windows. On a monitor with fixed regions they always move the window between regions, and never across monitors (Meta+Shift+arrows is KDE's move-to-screen).") }
             }
 
             ContentSubsection {
@@ -466,8 +484,8 @@ ContentPage {
                         { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
                         { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
-                        { keys: "Meta + ← →", what: Translation.tr("Move the window that way; at the end of the strip snap it to the monitor's edge (a full-width window becomes half width), then hop to the next monitor") },
-                        { keys: "Meta + ↑ ↓", what: Translation.tr("Move within a stack; otherwise maximize / restore the column") },
+                        { keys: "Meta + ← → ↑ ↓", what: Translation.tr("Regions mode: move the window to the neighbouring region that way (within the monitor). Scrolling monitors: nothing, unless enabled above") },
+                        { keys: "Ctrl+Meta+S", what: Translation.tr("Regions mode: split the focused region into a top and a bottom half, or merge it back") },
                         { keys: "Meta+Alt+G", what: Translation.tr("Switch this monitor between scrolling columns and fixed regions") },
                         { keys: "Meta+Alt+1 … 6", what: Translation.tr("Regions mode: send the window to region 1 … 6") }
                     ]

@@ -619,6 +619,20 @@ already, it hops to the next monitor that way and arrives at the edge it came fr
 landscape strip with nothing to reorder maximize / restore the column. A window the tiler does not
 manage gets KDE's own quick tile back through `Component.invokeShortcut` by name. The old interception
 stays as the fallback when the keys are not taken over.
+*Split tiles (round 6):* `split-region` (Ctrl+Meta+S) cuts the focused slot of a regions monitor into a
+top and bottom half (`zoneDerive` adds a key per KWin tile, the halves carry `half: 0/1`); windows are
+re-seated by overlap (`zoneReseat`: a cut slot spreads its stack over the halves in order, merged slots
+stack in order, and a Meta+T edit that removes the keyed tile just drops its split). KWin's tile layout
+itself is never written (the Tile scripting API has no split). The split list lives in the tiler
+(`state.splits`), is reported to the bar and written to `tiling.regionSplits` by `KWinBridge._syncSplits`,
+and comes back with the config, so it survives a restart. Meta+arrow on a regions monitor only
+moves a window to the neighbouring slot (`zoneNeighbour`; no stack reorder, no monitor hop); on a
+scrolling monitor it does nothing unless `tiling.arrowKeysScrollStrips`.
+*Open over (round 6):* `tiling.newWindowOverlay` (default on): `overlayTarget` picks the window a new
+window opens over (same app on screen, else the focused one) and `state.overlays` records it; the overlay
+is in no container and `layoutAll` writes it its host's rectangle and hides/shows it with the host.
+Host closed: the newest overlay takes the cell (`replaceInContainer`); host left the grid: the overlay
+tiles normally; Meta+arrow / move keys promote it into the grid (`unoverlay`); dragging it floats it.
 *Modifier drag floats:* a move that starts inside the window rather than on its title bar
 (`workspace.cursorPos` vs `clientGeometry`; KWin exposes no keyboard-modifier API) floats the
 window; resizes never float. *Quick tile:* KWin's Meta+arrow keys set `window.tile`; on a tiled
@@ -669,7 +683,7 @@ Released: Meta+Alt+K and Meta+Alt+L (keyboard-layout switching), Meta+Alt+R (scr
   persistent trace is the `KWiNiR Tiling: *` entries in `kglobalshortcutsrc`, which the bridge
   removes whenever tiling is off.
 
-**Verification.** `tools/tiling-test.mjs` (layout and regions model, 39), `tiling-glue-test.mjs` (fake KWin: 55,
+**Verification.** `tools/tiling-test.mjs` (layout and regions model, 39), `tiling-glue-test.mjs` (fake KWin: 77,
 incl. hotplug, desktops, drag resize/move, portrait), `tiling-bridge-test.py` (validators, 17), `tiling-live-test.py` and
 `tiling-live-multi.py` (real KWin, throwaway windows), `tiling-e2e-test.py` (the staged bar on a
 temp config: IPC, bridge, shortcuts, release on exit). All in `~/.local/share/Fancy-Floating-Bar/tools/`.

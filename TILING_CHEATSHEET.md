@@ -9,6 +9,19 @@ its own strip.
 full-width **row**, and windows that share a row sit side by side. Everything below says
 "column"; read it as "row" on a portrait monitor.
 
+## New windows open over a tiled window
+
+With "New windows open over the focused window" on (Settings › Tiling › Layout, default on), a window
+you open (from Latte, a launcher, a terminal) does **not** get a column or region of its own: it sits
+exactly over a tiled window of the **same app** if one is on screen, otherwise over the focused
+window of that monitor. Nothing scrolls and nothing else is minimized. Closing it uncovers the
+window under it; closing the window under it hands its cell to the one on top.
+- Move it into the grid: `Meta+arrow` (regions monitor) / `Meta+Alt+1…6` / the move keys; it joins
+  next to or under the window it covered.
+- Drag it by the title bar: it floats where you drop it. `Meta+Alt+V` floats it too.
+- Raise the covered window by focusing it (Alt+Tab, click, the focus keys).
+- The first window on a monitor (nothing to open over), dialogs and floating windows tile/float as usual.
+
 ## Two modes per monitor
 
 - **Scrolling columns** (default): everything above. A new window opens as a new column, the
@@ -55,13 +68,19 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 
 | Keys | Does on a tiled window |
 |---|---|
-| `Meta+←/→` | **moves the window** that way (like `Meta+Alt+Shift+H/L`). At the end of the strip the window first **snaps to that edge of the monitor** (a full-width window becomes half width, flush against the edge, like KDE's "tile to the right half"); pressed again it **hops to the next monitor** that way and arrives at the edge it came in from. Nothing that way: stays put |
+| `Meta+←/→/↑/↓` on a **regions** monitor | moves the window to the **neighbouring region** that way (within the monitor, never across monitors: `Meta+Shift+←/→` is KDE's move-to-screen). Nothing that way: it stays. No stack reordering, no scrolling |
+| `Meta+←/→` on a scrolling monitor | **nothing**, unless Settings › Tiling › Keys › "Meta + arrows also move columns" is on. Then: moves the window that way (like `Meta+Alt+Shift+H/L`). At the end of the strip the window first **snaps to that edge of the monitor** (a full-width window becomes half width, flush against the edge, like KDE's "tile to the right half"); pressed again it **hops to the next monitor** that way and arrives at the edge it came in from. Nothing that way: stays put |
 | `Meta+↑/↓` | moves the window up / down inside its stack; with nothing to reorder, `↑` maximizes the column and `↓` restores it (on a portrait monitor they work like `←/→` do on a landscape one) |
 | `Meta+Shift+←/→` (move to previous / next screen) | KWin sends the window to that monitor and the tiler slots it in next to that monitor's focused column |
 
 While tiling runs the tiler **owns the four Meta+arrow keys**: it releases KDE's quick-tile bindings at start and gives them back when tiling stops (Settings › Tiling › Keys has a switch). On a floating window, or one on a monitor that doesn't tile, Meta+arrows still do KDE's quick tile. If the bar ever dies mid-run and the keys stay released: `sh ~/.local/share/Fancy-Floating-Bar/REVERT-tiling-quicktile.sh`.
 
 ### Regions mode only
+
+| Keys | Does |
+|---|---|
+| `Ctrl+Meta+S` | **split** the focused region into a top and a bottom half; press it again in either half to merge them back. Windows in the region spread over the halves in order. Persisted across restarts; keyed to the tile's rectangle, so editing that tile in Meta+T drops its split |
+
 
 | Keys | Does |
 |---|---|
