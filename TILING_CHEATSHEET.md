@@ -33,6 +33,15 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 | `Meta+Alt+]` | the same toward the next column |
 | `Meta+Alt+V` | float this window / put it back in the strip |
 
+### KDE's own window keys (still work, now tiling-aware)
+
+| Keys | Does on a tiled window |
+|---|---|
+| `Meta+←/→/↑/↓` (KDE quick tile) | **moves the window** like `Meta+Alt+Shift+H/L/K/J` instead of snapping it to half the screen. At the end of the strip it hops to the monitor in that direction and arrives at the edge it came in from. Nothing in that direction: stays put |
+| `Meta+Shift+←/→` (move to previous / next screen) | KWin sends the window to that monitor and the tiler slots it in next to that monitor's focused column |
+
+On a floating window, or one on a monitor that doesn't tile, these behave as KDE normally does.
+
 ### Size and scroll
 
 | Keys | Does |
@@ -48,6 +57,11 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 - **Drag an outer edge** of the first/last window: only that column changes size.
 - **Drag a window by its title bar** and let go: it drops into the slot under it, on whatever
   monitor you dropped it. A nudge of a few pixels just snaps it back.
+- **`Meta` + left-drag floats the window** where you drop it (any drag that starts inside the
+  window instead of on its title bar does: that is whatever KWin's *Window Actions* modifier is
+  set to). `Meta` + right-drag resizes and never floats. Windows that draw their own title bar
+  (Firefox-style) count their top 48 px as the title bar, so a `Meta`-drag that starts up there
+  re-tiles instead of floating.
 - Dropped on a monitor that doesn't tile → it floats there. `Meta+Alt+V` tiles it again.
 - **Pill minimap** (beside the desktop dots): one segment per column, bright = on screen,
   accent = focused. Click one to focus that column.
