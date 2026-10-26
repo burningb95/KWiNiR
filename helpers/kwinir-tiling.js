@@ -26,7 +26,11 @@ var DEFAULTS = {
         "org.kde.kwalletmanager", "org.kde.latte-dock", "org.kde.klipper", "xwaylandvideobridge",
         "org.kde.kscreenlocker_greet", "steam_app_*", "pinentry*", "kwinir-float*"
     ],
-    bottomMargin: 0,                  // px kept clear at the bottom of a tiling output
+    struts: { left: 0, right: 0, top: 0, bottom: 0 },   // px kept clear on every tiling output
+    portraitVertical: true,           // portrait outputs scroll vertically (rows) instead of columns
+    portraitDockStrip: 8,             // extra px kept clear at the bottom of portrait outputs (a dock's hover strip)
+    centerSingle: false,              // a lone column sits centred
+    expandSingle: false,              // a lone column fills the working area
     shortcutPrefix: "KWiNiR Tiling: ",
     shortcuts: true,
     // The bridge (helpers/kwinir_bridge.py) owns both: commands arrive by long-poll, state
@@ -49,7 +53,14 @@ function wid(w) { return String(w.internalId); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 function makeColumn(frac) { return { windows: [], frac: frac, prevFrac: null, focusedIndex: 0 }; }
-function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null }; }
+// vertical: the strip runs top to bottom (portrait outputs) and a column's windows sit side by
+// side; everything below is written in main axis (along the strip) / cross axis (across it).
+// weights: window id -> relative size across the strip axis (missing = 1).
+function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null, vertical: false, weights: {} }; }
+
+function resetWeights(strip, col) {
+    for (var i = 0; i < col.windows.length; i++) delete strip.weights[wid(col.windows[i])];
+}
 
 function stripFind(strip, w) {
     var id = wid(w);
@@ -81,11 +92,23 @@ function stripAdd(strip, w, frac) {
     return at;
 }
 
+// Dropped window: its own column at idx (clamped), focused.
+function stripInsertColumn(strip, w, idx, frac) {
+    var at = clamp(idx, 0, strip.columns.length);
+    var col = makeColumn(frac);
+    col.windows.push(w);
+    strip.columns.splice(at, 0, col);
+    strip.focusedColumn = at;
+    return at;
+}
+
 function stripRemove(strip, w) {
     var at = stripFind(strip, w);
     if (!at) return false;
     var col = strip.columns[at.c];
     col.windows.splice(at.r, 1);
+    delete strip.weights[wid(w)];
+    resetWeights(strip, col);
     if (col.focusedIndex >= col.windows.length) col.focusedIndex = Math.max(0, col.windows.length - 1);
     else if (col.focusedIndex > at.r) col.focusedIndex--;
     if (!col.windows.length) {
@@ -144,6 +167,7 @@ function stripConsume(strip, delta) {
     var src = strip.columns[from], dst = strip.columns[to];
     if (!src || !dst) return false;
     var w = src.windows.splice(src.focusedIndex, 1)[0];
+    resetWeights(strip, src); resetWeights(strip, dst); delete strip.weights[wid(w)];
     var row = delta < 0 ? dst.windows.length : 0;
     dst.windows.splice(row, 0, w);
     dst.focusedIndex = row;
@@ -161,6 +185,7 @@ function stripExpel(strip, delta, frac) {
     var src = strip.columns[strip.focusedColumn];
     if (!src || src.windows.length < 2) return false;
     var w = src.windows.splice(src.focusedIndex, 1)[0];
+    resetWeights(strip, src); delete strip.weights[wid(w)];
     if (src.focusedIndex >= src.windows.length) src.focusedIndex = src.windows.length - 1;
     var col = makeColumn(frac);
     col.windows.push(w);
@@ -195,30 +220,38 @@ function stripToggleMaximize(strip, colIndex) {
     return true;
 }
 
+function mainLen(strip, area) { return strip.vertical ? area.height : area.width; }
+function crossLen(strip, area) { return strip.vertical ? area.width : area.height; }
+function minMain(w, vertical) { var m = w.minSize; return m ? (vertical ? m.height : m.width) : 0; }
+
 function stripSetWidthPx(strip, colIndex, px, area, c) {
     var col = strip.columns[colIndex];
     if (!col) return false;
-    var usable = area.width - 2 * c.gap;
+    var usable = mainLen(strip, area) - 2 * c.gap;
     col.frac = clamp((px + c.gap) / (usable + c.gap), 0.1, 1);
     col.prevFrac = null;
     return true;
 }
 
-function columnWidthPx(col, area, c) {
-    var usable = area.width - 2 * c.gap;
-    var px = Math.round(col.frac * (usable + c.gap) - c.gap);
+// Size of a column along the strip axis, px. vertical: the strip runs top to bottom.
+// fracOverride: used for a lone column that expands to fill the area.
+function columnWidthPx(col, area, c, vertical, fracOverride) {
+    var usable = (vertical ? area.height : area.width) - 2 * c.gap;
+    var frac = fracOverride === undefined ? col.frac : fracOverride;
+    var px = Math.round(frac * (usable + c.gap) - c.gap);
     for (var i = 0; i < col.windows.length; i++) {
-        var m = col.windows[i].minSize;
-        if (m && m.width > px) px = m.width;
+        var m = minMain(col.windows[i], vertical);
+        if (m > px) px = m;
     }
     return clamp(px, 1, usable);
 }
 
-// [{x, w}] in strip coordinates (0 = left edge of the working area).
+// [{x, w}] along the strip axis (0 = start of the working area): "x" is the main-axis offset.
 function columnXs(strip, area, c) {
     var out = [], x = c.gap;
+    var lone = c.expandSingle && strip.columns.length === 1 ? 1 : undefined;
     for (var i = 0; i < strip.columns.length; i++) {
-        var w = columnWidthPx(strip.columns[i], area, c);
+        var w = columnWidthPx(strip.columns[i], area, c, strip.vertical, lone);
         out.push({ x: x, w: w });
         x += w + c.gap;
     }
@@ -228,44 +261,138 @@ function columnXs(strip, area, c) {
 // scrollX that brings column idx fully into view. prevIdx = the column that was focused
 // before, used by "on-overflow": centre only if the old and new columns can't both fit.
 function scrollFor(strip, area, c, idx, prevIdx) {
-    var xs = columnXs(strip, area, c);
+    var xs = columnXs(strip, area, c), len = mainLen(strip, area);
     var col = xs[idx];
     if (!col) return strip.scrollX;
-    var centred = col.x + col.w / 2 - area.width / 2;
-    if (c.center === "always") return Math.round(centred);
+    var centred = col.x + col.w / 2 - len / 2;
+    if (c.center === "always" || (c.centerSingle && strip.columns.length === 1)) return Math.round(centred);
     var left = col.x - c.gap, right = col.x + col.w + c.gap, scroll = strip.scrollX;
-    if (left >= scroll && right <= scroll + area.width) return scroll;
+    if (left >= scroll && right <= scroll + len) return scroll;
     if (c.center === "on-overflow") {
         var prev = xs[prevIdx];
         var spanL = prev ? Math.min(left, prev.x - c.gap) : left;
         var spanR = prev ? Math.max(right, prev.x + prev.w + c.gap) : right;
-        if (spanR - spanL > area.width) return Math.round(centred);
+        if (spanR - spanL > len) return Math.round(centred);
     }
-    return left < scroll ? left : right - area.width;
+    return left < scroll ? left : right - len;
+}
+
+// Sizes of a column's windows across the strip axis, px (weights -> px, gaps between).
+function stackSizes(strip, col, cross, c) {
+    var n = col.windows.length, total = cross - 2 * c.gap - c.gap * (n - 1);
+    var wts = [], sum = 0, i;
+    for (i = 0; i < n; i++) { wts.push(strip.weights[wid(col.windows[i])] || 1); sum += wts[i]; }
+    var out = [], used = 0;
+    for (i = 0; i < n; i++) {
+        var px = i === n - 1 ? total - used : Math.floor(total * wts[i] / sum);
+        out.push(px);
+        used += px;
+    }
+    return out;
 }
 
 // Pure: where every window goes. A column is visible only if fully inside the viewport
 // (a partly visible one would bleed onto the neighbouring monitor).
 function computeLayout(strip, area, c) {
+    var v = !!strip.vertical, M = mainLen(strip, area), X = crossLen(strip, area);
     var xs = columnXs(strip, area, c), out = [];
-    var innerH = area.height - 2 * c.gap;
     for (var i = 0; i < strip.columns.length; i++) {
         var col = strip.columns[i], n = col.windows.length;
-        var viewX = xs[i].x - strip.scrollX;
-        var visible = viewX >= c.gap - 1 && viewX + xs[i].w <= area.width - c.gap + 1;
-        var h = Math.floor((innerH - c.gap * (n - 1)) / n);
+        var viewM = xs[i].x - strip.scrollX;
+        var visible = viewM >= c.gap - 1 && viewM + xs[i].w <= M - c.gap + 1;
+        var sizes = stackSizes(strip, col, X, c), at = c.gap;
         for (var r = 0; r < n; r++) {
-            var hh = r === n - 1 ? innerH - (h + c.gap) * (n - 1) : h;
+            var m = Math.round(viewM);
             out.push({
                 window: col.windows[r], column: i, row: r, visible: visible,
-                rect: {
-                    x: Math.round(area.x + viewX), y: Math.round(area.y + c.gap + r * (h + c.gap)),
-                    width: xs[i].w, height: hh
-                }
+                rect: v ? { x: Math.round(area.x + at), y: Math.round(area.y + m), width: sizes[r], height: xs[i].w }
+                        : { x: Math.round(area.x + m), y: Math.round(area.y + at), width: xs[i].w, height: sizes[r] }
             });
+            at += sizes[r] + c.gap;
         }
     }
     return out;
+}
+
+// Interactive resize, pure. start/cur: the dragged window's frame before and after (any
+// {x, y, width, height}). entries: computeLayout() of the strip when the drag began. Dragging
+// the edge shared with a fully visible neighbour moves that edge: the neighbour gives up (or
+// takes) exactly what the dragged window gains, so the pair keeps its span and nothing else
+// has to leave the viewport. An outer edge resizes just the dragged column. The result is
+//   { cols: [{c, px}], weights: {id: px} | null }   (null/empty: nothing to change)
+function planResize(strip, area, c, at, start, cur, entries) {
+    var v = !!strip.vertical, TH = 2;
+    var plan = { cols: [], weights: null };
+    var m0 = v ? start.y : start.x, mw0 = v ? start.height : start.width;
+    var m1 = v ? cur.y : cur.x, mw1 = v ? cur.height : cur.width;
+    var x0 = v ? start.x : start.y, xw0 = v ? start.width : start.height;
+    var x1 = v ? cur.x : cur.y, xw1 = v ? cur.width : cur.height;
+    var xs = columnXs(strip, area, c), len = mainLen(strip, area);
+    var minPx = function (col) {
+        var frac = Math.round(0.1 * (len - 2 * c.gap + c.gap) - c.gap);
+        return Math.max(frac, 1, Math.max.apply(null, col.windows.map(function (w) { return minMain(w, v); })));
+    };
+
+    // main axis (column width / row height in a vertical strip)
+    var dS = m1 - m0, dE = (m1 + mw1) - (m0 + mw0);
+    var grow = 0, nb = -1;
+    if (Math.abs(dE) >= TH && Math.abs(dS) < TH) { grow = dE; nb = at.c + 1; }
+    else if (Math.abs(dS) >= TH && Math.abs(dE) < TH) { grow = -dS; nb = at.c - 1; }
+    if (grow !== 0) {
+        var wD = xs[at.c].w, dragged = strip.columns[at.c];
+        var nbVisible = nb >= 0 && nb < strip.columns.length;
+        if (nbVisible) {
+            var vis = false;
+            for (var i = 0; i < entries.length; i++) if (entries[i].column === nb) { vis = entries[i].visible; break; }
+            nbVisible = vis;
+        }
+        var newD = Math.max(wD + grow, minPx(dragged));
+        if (nbVisible) {
+            var nbCol = strip.columns[nb], wN = xs[nb].w;
+            var give = newD - wD;                         // what the neighbour loses
+            give = Math.min(give, wN - minPx(nbCol));
+            newD = wD + give;
+            if (newD < minPx(dragged)) { newD = minPx(dragged); give = newD - wD; }
+            plan.cols.push({ c: nb, px: wN - give });
+        }
+        plan.cols.push({ c: at.c, px: newD });
+    }
+
+    // cross axis (height of a window in a stack / width of one in a vertical strip)
+    var cS = x1 - x0, cE = (x1 + xw1) - (x0 + xw0);
+    var cg = 0, rn = -1;
+    if (Math.abs(cE) >= TH && Math.abs(cS) < TH) { cg = cE; rn = at.r + 1; }
+    else if (Math.abs(cS) >= TH && Math.abs(cE) < TH) { cg = -cS; rn = at.r - 1; }
+    var col = strip.columns[at.c];
+    if (cg !== 0 && rn >= 0 && rn < col.windows.length) {
+        var sizes = stackSizes(strip, col, crossLen(strip, area), c), MIN = 60;
+        var d = clamp(cg, -(sizes[at.r] - MIN), sizes[rn] - MIN);
+        var wts = {};
+        for (var r = 0; r < col.windows.length; r++) wts[wid(col.windows[r])] = sizes[r];
+        wts[wid(col.windows[at.r])] = sizes[at.r] + d;
+        wts[wid(col.windows[rn])] = sizes[rn] - d;
+        plan.weights = wts;
+    }
+    return plan;
+}
+
+function applyPlan(strip, area, c, plan) {
+    var changed = false;
+    for (var i = 0; i < plan.cols.length; i++)
+        changed = stripSetWidthPx(strip, plan.cols[i].c, plan.cols[i].px, area, c) || changed;
+    if (plan.weights) {
+        for (var id in plan.weights) strip.weights[id] = plan.weights[id];
+        changed = true;
+    }
+    return changed;
+}
+
+// Where a dropped window (centre at centreM along the strip axis, relative to the area) lands
+// among the existing columns: the number of columns whose midpoint lies before it.
+function dropIndex(strip, area, c, centreM) {
+    var xs = columnXs(strip, area, c), n = 0, pos = centreM + strip.scrollX;
+    for (var i = 0; i < xs.length; i++) if (xs[i].x + xs[i].w / 2 < pos) n++;
+    return n;
 }
 
 function matchesClass(cls, patterns) {
@@ -288,7 +415,10 @@ var state = {
     scriptMin: {},     // window id -> true when WE minimized it
     expectMin: {},     // window id -> value we just set, so the signal is not mistaken for the user
     lastRect: {},      // window id -> "x,y,w,h" last written
-    interactive: {},   // window id -> geometry at start of a user move/resize
+    interactive: {},   // window id -> {start, resizing, strip, at, area, entries, cur} during a user move/resize
+    dragId: null,      // id of the window being dragged (live resize preview)
+    geomDirty: {},     // window id -> window whose geometry changed outside our writes
+    fixes: {},         // window id -> {n, t0}: re-assert attempts, capped so we never fight a client
     wired: {},         // window id -> true once per-window signals are connected
     applying: false,
     pendingLayout: false,
@@ -353,8 +483,12 @@ function getStrip(outName, deskId, create) {
 function workArea(strip) {
     var out = outputByName(strip.outputName), desk = desktopById(strip.desktopId);
     if (!out || !desk) return null;
-    var a = workspace.clientArea(KWin.MaximizeArea, out, desk);
-    return { x: a.x, y: a.y, width: a.width, height: a.height - cfg.bottomMargin };
+    var a = workspace.clientArea(KWin.MaximizeArea, out, desk), st = cfg.struts;
+    var g = out.geometry, portrait = g.height > g.width, vertical = cfg.portraitVertical && portrait;
+    if (vertical !== strip.vertical) { strip.vertical = vertical; strip.scrollX = 0; }
+    var bottom = st.bottom + (portrait ? cfg.portraitDockStrip : 0);
+    return { x: a.x + st.left, y: a.y + st.top,
+             width: a.width - st.left - st.right, height: a.height - st.top - bottom };
 }
 
 function isTileable(w) {
@@ -478,6 +612,8 @@ function entriesVisible(entries, w) {
     return false;
 }
 
+var previewTimer = null, previewArmed = false;   // live neighbour follow during a border drag
+var geomTimer = null;                            // debounce for geometry changes we did not make
 var layoutTimer = null, layoutTimerArmed = false;
 function scheduleLayout() {
     if (!layoutTimer || layoutTimerArmed) return;
@@ -558,6 +694,13 @@ function wireWindow(w) {
     // Bar / dock surfaces change the usable area when they move or resize: re-lay out.
     if (w.dock || (w.skipTaskbar && w.onAllDesktops))
         w.frameGeometryChanged.connect(guard("areaChanged", scheduleLayout));
+    else
+        w.frameGeometryChanged.connect(guard("geometryChanged", function () {
+            var i = wid(w);
+            if (state.applying || state.released || !state.started || state.interactive[i] || !state.byWin[i]) return;
+            state.geomDirty[i] = w;
+            if (geomTimer) geomTimer.start();   // restarting it debounces a burst into one check
+        }));
     w.desktopsChanged.connect(guard("desktopsChanged", function () {
         if (!state.applying) retile(w);
     }));
@@ -601,29 +744,142 @@ function wireWindow(w) {
         layoutAll(w);
     }));
     w.interactiveMoveResizeStarted.connect(guard("moveStarted", function () {
-        var g = w.frameGeometry;
-        state.interactive[wid(w)] = { x: g.x, y: g.y, width: g.width, height: g.height };
-    }));
-    w.interactiveMoveResizeFinished.connect(guard("moveFinished", function () {
-        var i = wid(w), start = state.interactive[i], g = w.frameGeometry;
-        delete state.interactive[i];
-        var strip = stripOf(w);
-        if (!start || !strip) return;
-        var resized = Math.abs(g.width - start.width) > 3;
-        var moved = Math.abs(g.x - start.x) > 3 || Math.abs(g.y - start.y) > 3;
-        if (resized) {
-            var at = stripFind(strip, w), area = workArea(strip);
-            if (at && area) stripSetWidthPx(strip, at.c, g.width, area, cfg);
-            delete state.lastRect[i];
-            reveal(strip, strip.focusedColumn);
-            layoutAll(w);
-        } else if (moved) {
-            // v1: dragging a tiled window floats it where it was dropped.
-            state.floating[i] = true;
-            untile(w);
-            scheduleLayout();
+        var g = w.frameGeometry, strip = stripOf(w);
+        var rec = { start: { x: g.x, y: g.y, width: g.width, height: g.height }, resizing: w.resize === true,
+                    strip: strip, at: null, area: null, entries: null, cur: null };
+        if (strip) {
+            rec.at = stripFind(strip, w);
+            rec.area = workArea(strip);
+            rec.entries = rec.area ? computeLayout(strip, rec.area, cfg) : null;
         }
+        state.interactive[wid(w)] = rec;
+        state.dragId = wid(w);
     }));
+    if (w.interactiveMoveResizeStepped)
+        w.interactiveMoveResizeStepped.connect(guard("moveStepped", function (geometry) {
+            var rec = state.interactive[wid(w)];
+            if (!rec || !rec.resizing || !rec.entries || !geometry) return;
+            rec.cur = { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height };
+            if (previewTimer && !previewArmed) { previewArmed = true; previewTimer.start(); }
+        }));
+    w.interactiveMoveResizeFinished.connect(guard("moveFinished", function () {
+        var i = wid(w), rec = state.interactive[i], g = w.frameGeometry;
+        delete state.interactive[i];
+        if (state.dragId === i) state.dragId = null;
+        var strip = stripOf(w);
+        if (!rec || !strip || state.released) { scheduleLayout(); return; }
+        var cur = { x: g.x, y: g.y, width: g.width, height: g.height };
+        if (rec.resizing) finishResize(w, strip, rec, cur);
+        else finishMove(w, strip, rec, cur);
+    }));
+}
+
+// A client that resizes or moves itself (restoring a saved size, leaving fullscreen) leaves its
+// tile looking "reverted". If a visible tiled window sits off its slot for good, put it back;
+// at most 3 times per 5 s so a window that insists on its own size is never fought forever.
+function verifyGeometry(w) {
+    var id = wid(w), strip = stripOf(w);
+    if (!strip || w.deleted || w.minimized || w.fullScreen || state.interactive[id] || state.released) return;
+    if (strip.desktopId !== workspace.currentDesktop.id) return;
+    var lay = strip.lastLayout || [], e = null;
+    for (var i = 0; i < lay.length; i++) if (wid(lay[i].window) === id) { e = lay[i]; break; }
+    if (!e || !e.visible) return;
+    var g = w.frameGeometry, r = e.rect;
+    if (Math.abs(g.x - r.x) <= 3 && Math.abs(g.y - r.y) <= 3
+            && Math.abs(g.width - r.width) <= 40 && Math.abs(g.height - r.height) <= 40
+            && !w.maximizeMode) return;
+    var now = Date.now(), f = state.fixes[id];
+    if (!f || now - f.t0 > 5000) f = state.fixes[id] = { n: 0, t0: now };
+    if (f.n >= 3) return;
+    f.n++;
+    log("re-asserting " + String(w.resourceClass).slice(0, 40) + " (" + Math.round(g.width) + "x" + Math.round(g.height)
+        + "+" + Math.round(g.x) + "+" + Math.round(g.y) + " -> " + r.width + "x" + r.height + "+" + r.x + "+" + r.y + ")");
+    delete state.lastRect[id];
+    state.applying = true;
+    try { writeGeometry(w, r); } finally { state.applying = false; }
+}
+
+function verifyDirty() {
+    var dirty = state.geomDirty;
+    state.geomDirty = {};
+    for (var id in dirty) if (!dirty[id].deleted) verifyGeometry(dirty[id]);
+}
+
+function cloneStrip(strip) {
+    var cp = makeStrip(), id;
+    cp.focusedColumn = strip.focusedColumn; cp.scrollX = strip.scrollX; cp.vertical = strip.vertical;
+    for (id in strip.weights) cp.weights[id] = strip.weights[id];
+    cp.columns = strip.columns.map(function (col) {
+        return { windows: col.windows.slice(), frac: col.frac, prevFrac: col.prevFrac, focusedIndex: col.focusedIndex };
+    });
+    return cp;
+}
+
+// While a border is dragged, the neighbour it pushes against follows live (the dragged window
+// is KWin's to move). Nothing is hidden or minimized until the drag ends.
+function previewResize() {
+    var rec = state.dragId !== null ? state.interactive[state.dragId] : null;
+    if (!rec || !rec.resizing || !rec.cur || !rec.strip || !rec.at || state.released) return;
+    var strip = rec.strip, area = workArea(strip);
+    if (!area) return;
+    var plan = planResize(strip, area, cfg, rec.at, rec.start, rec.cur, rec.entries);
+    var cp = cloneStrip(strip);
+    if (!applyPlan(cp, area, cfg, plan)) return;
+    var was = {}, i;
+    for (i = 0; i < rec.entries.length; i++) was[wid(rec.entries[i].window)] = rec.entries[i];
+    var entries = computeLayout(cp, area, cfg);
+    state.applying = true;
+    try {
+        for (i = 0; i < entries.length; i++) {
+            var e = entries[i], id = wid(e.window), before = was[id];
+            if (id === state.dragId || !e.visible || !before || !before.visible || e.window.deleted) continue;
+            if (rectKey(e.rect) !== rectKey(before.rect)) writeGeometry(e.window, e.rect);
+        }
+    } finally { state.applying = false; }
+}
+
+function forgetRects(strip) {
+    for (var c = 0; c < strip.columns.length; c++)
+        for (var r = 0; r < strip.columns[c].windows.length; r++)
+            delete state.lastRect[wid(strip.columns[c].windows[r])];
+}
+
+function finishResize(w, strip, rec, cur) {
+    var area = workArea(strip), at = stripFind(strip, w);
+    if (area && at) {
+        var entries = rec.entries || computeLayout(strip, area, cfg);
+        applyPlan(strip, area, cfg, planResize(strip, area, cfg, at, rec.start, cur, entries));
+    }
+    forgetRects(strip);
+    reveal(strip, strip.focusedColumn);
+    layoutAll(w);
+}
+
+// A dragged tiled window re-enters the strip where it was dropped: on the monitor it ended up
+// on, in the slot its centre falls in. Dropped on a monitor that does not tile, it floats there.
+function finishMove(w, strip, rec, cur) {
+    var i = wid(w), travelled = Math.abs(cur.x - rec.start.x) + Math.abs(cur.y - rec.start.y);
+    if (travelled < 6) { forgetRects(strip); layoutAll(w); return; }
+    var out = w.output;
+    if (!out || !tilingOutput(out.name) || !w.desktops || w.desktops.length !== 1) {
+        state.floating[i] = true;
+        untile(w);
+        reveal(strip, strip.focusedColumn);
+        layoutAll(w);
+        return;
+    }
+    var at = stripFind(strip, w), solo = at && strip.columns[at.c].windows.length === 1;
+    var frac = solo ? strip.columns[at.c].frac : cfg.defaultWidth;
+    untile(w);
+    reveal(strip, strip.focusedColumn);
+    var target = getStrip(out.name, w.desktops[0].id, true), area = workArea(target);
+    if (!area) { layoutAll(w); return; }
+    var centre = target.vertical ? cur.y + cur.height / 2 - area.y : cur.x + cur.width / 2 - area.x;
+    var idx = stripInsertColumn(target, w, dropIndex(target, area, cfg, centre), frac);
+    state.byWin[i] = target.key;
+    forgetRects(target);
+    reveal(target, idx);
+    layoutAll(w);
 }
 
 function onWindowAdded(w) {
@@ -641,6 +897,8 @@ function onWindowRemoved(w) {
     }
     delete state.scriptMin[id]; delete state.lastRect[id]; delete state.expectMin[id];
     delete state.interactive[id]; delete state.wired[id]; delete state.floating[id];
+    delete state.geomDirty[id]; delete state.fixes[id];
+    if (state.dragId === id) state.dragId = null;
     if (strip) {
         reveal(strip, strip.focusedColumn);
         layoutAll(wasActive ? stripFocusedWindow(strip) : null);
@@ -741,15 +999,35 @@ function releaseAll() {
     return n;
 }
 
+// Directional commands follow the screen: in a vertical (portrait) strip up/down run along the
+// strip and left/right move between the windows side by side in one row.
+function dirIsMain(strip, dir) {
+    return strip.vertical ? (dir === "up" || dir === "down") : (dir === "left" || dir === "right");
+}
+
+function focusDir(dir) {
+    return withStrip(function (s) {
+        var d = dir === "left" || dir === "up" ? -1 : 1;
+        return dirIsMain(s, dir) ? stripFocusColumn(s, d) : stripFocusRow(s, d);
+    });
+}
+
+function moveDir(dir) {
+    return withStrip(function (s) {
+        var d = dir === "left" || dir === "up" ? -1 : 1;
+        return dirIsMain(s, dir) ? stripMoveColumn(s, d) : stripMoveRow(s, d);
+    });
+}
+
 var COMMANDS = {
-    "focus-left": function () { return withStrip(function (s) { return stripFocusColumn(s, -1); }); },
-    "focus-right": function () { return withStrip(function (s) { return stripFocusColumn(s, 1); }); },
-    "focus-up": function () { return withStrip(function (s) { return stripFocusRow(s, -1); }); },
-    "focus-down": function () { return withStrip(function (s) { return stripFocusRow(s, 1); }); },
-    "move-column-left": function () { return withStrip(function (s) { return stripMoveColumn(s, -1); }); },
-    "move-column-right": function () { return withStrip(function (s) { return stripMoveColumn(s, 1); }); },
-    "move-window-up": function () { return withStrip(function (s) { return stripMoveRow(s, -1); }); },
-    "move-window-down": function () { return withStrip(function (s) { return stripMoveRow(s, 1); }); },
+    "focus-left": function () { return focusDir("left"); },
+    "focus-right": function () { return focusDir("right"); },
+    "focus-up": function () { return focusDir("up"); },
+    "focus-down": function () { return focusDir("down"); },
+    "move-column-left": function () { return moveDir("left"); },
+    "move-column-right": function () { return moveDir("right"); },
+    "move-window-up": function () { return moveDir("up"); },
+    "move-window-down": function () { return moveDir("down"); },
     "consume-left": function () { return withStrip(function (s) { return stripConsume(s, -1); }); },
     "consume-right": function () { return withStrip(function (s) { return stripConsume(s, 1); }); },
     "expel": function () { return withStrip(function (s) { return stripExpel(s, 1, cfg.defaultWidth); }); },
@@ -765,7 +1043,7 @@ var COMMANDS = {
         return withStrip(function (s) {
             var area = workArea(s), xs = area && columnXs(s, area, cfg), c = xs && xs[s.focusedColumn];
             if (!c) return false;
-            s.scrollX = Math.round(c.x + c.w / 2 - area.width / 2);
+            s.scrollX = Math.round(c.x + c.w / 2 - mainLen(s, area) / 2);
             return true;
         }, true);
     },
@@ -874,7 +1152,18 @@ function applyConfig(c) {
     var presets = numList(c.presetWidths, 8);
     if (presets) cfg.presetWidths = presets;
     if (c.center === "never" || c.center === "on-overflow" || c.center === "always") cfg.center = c.center;
-    if (typeof c.bottomMargin === "number" && c.bottomMargin >= 0 && c.bottomMargin <= 400) cfg.bottomMargin = Math.round(c.bottomMargin);
+    if (c.struts && typeof c.struts === "object") {
+        var st = { left: cfg.struts.left, right: cfg.struts.right, top: cfg.struts.top, bottom: cfg.struts.bottom };
+        ["left", "right", "top", "bottom"].forEach(function (k) {
+            if (typeof c.struts[k] === "number" && c.struts[k] >= 0 && c.struts[k] <= 512) st[k] = Math.round(c.struts[k]);
+        });
+        cfg.struts = st;
+    }
+    if (typeof c.portraitDockStrip === "number" && c.portraitDockStrip >= 0 && c.portraitDockStrip <= 200)
+        cfg.portraitDockStrip = Math.round(c.portraitDockStrip);
+    if (typeof c.portraitVertical === "boolean") cfg.portraitVertical = c.portraitVertical;
+    if (typeof c.centerSingle === "boolean") cfg.centerSingle = c.centerSingle;
+    if (typeof c.expandSingle === "boolean") cfg.expandSingle = c.expandSingle;
     var outs = strList(c.outputs, 8, 64);
     if (outs && outs.length) cfg.outputs = outs;
     if (c.onlyClasses === null) cfg.onlyClasses = null;
@@ -914,7 +1203,7 @@ function buildReport() {
         var area = workArea(strip), vis = {}, lay = strip.lastLayout || [];
         for (var i = 0; i < lay.length; i++) vis[wid(lay[i].window)] = lay[i].visible;
         var xs = area ? columnXs(strip, area, cfg) : [], last = xs.length ? xs[xs.length - 1] : null;
-        var span = last && area ? Math.max(1, last.x + last.w + cfg.gap - area.width) : 1;
+        var span = last && area ? Math.max(1, last.x + last.w + cfg.gap - mainLen(strip, area)) : 1;
         var cols = [];
         for (var c = 0; c < strip.columns.length; c++) {
             var col = strip.columns[c], ws = [];
@@ -927,7 +1216,7 @@ function buildReport() {
                         visible: ws.length ? vis[ws[0].id] === true : false, windows: ws });
         }
         rep.outputs[strip.outputName] = {
-            desktop: strip.desktopId, focusedColumn: strip.focusedColumn,
+            desktop: strip.desktopId, focusedColumn: strip.focusedColumn, vertical: strip.vertical === true,
             scroll: Math.round(clamp(strip.scrollX / span, 0, 1) * 1000) / 1000, columns: cols
         };
     }
@@ -973,6 +1262,16 @@ function init() {
     layoutTimer.singleShot = true;
     layoutTimer.interval = 30;
     layoutTimer.timeout.connect(guard("layoutTimer", function () { layoutTimerArmed = false; layoutAll(null); }));
+
+    previewTimer = new QTimer();
+    previewTimer.singleShot = true;
+    previewTimer.interval = 40;
+    previewTimer.timeout.connect(guard("previewTimer", function () { previewArmed = false; previewResize(); }));
+
+    geomTimer = new QTimer();
+    geomTimer.singleShot = true;
+    geomTimer.interval = 250;
+    geomTimer.timeout.connect(guard("geomTimer", verifyDirty));
 
     refocusTimer = new QTimer();
     refocusTimer.singleShot = true;
