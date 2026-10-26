@@ -56,6 +56,9 @@ Singleton {
             struts: ({ left: t?.struts?.left ?? 0, right: t?.struts?.right ?? 0,
                        top: t?.struts?.top ?? 0, bottom: t?.struts?.bottom ?? 0 }),
             regionOutputs: Array.from(t?.regionOutputs ?? []),
+            regionSplits: root._parseSplits(t?.regionSplits),
+            newWindowOverlay: t?.newWindowOverlay ?? true,
+            arrowKeysScrollStrips: t?.arrowKeysScrollStrips ?? false,
             regionsNewWindow: t?.regionsNewWindow ?? "smart",
             portraitVertical: t?.portraitVertical ?? true,
             portraitDockStrip: t?.portraitDockStrip ?? 8,
@@ -80,7 +83,7 @@ Singleton {
         "move-column-left", "move-column-right", "move-window-up", "move-window-down", "consume-left",
         "consume-right", "expel", "consume-or-expel-left", "consume-or-expel-right", "cycle-width",
         "maximize-column", "center-column", "float-toggle", "relayout", "adopt", "focus-column",
-        "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down"]
+        "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down", "split-region"]
 
     /** Sends one command to the tiling script (the helper whitelists names). False if refused or not running. */
     function sendTiling(name: string, arg): bool {
@@ -88,6 +91,29 @@ Singleton {
             return false
         helper.write(JSON.stringify({ type: "tiling-command", name: name, arg: arg ?? null }) + "\n")
         return true
+    }
+
+    function _parseSplits(raw): var {
+        try {
+            const o = JSON.parse(String(raw ?? "{}"))
+            return (o && typeof o === "object" && !Array.isArray(o)) ? o : ({})
+        } catch (e) { return ({}) }
+    }
+
+    function _canonSplits(o): string {
+        const out = {}
+        for (const k of Object.keys(o ?? {}).sort())
+            out[k] = Array.from(o[k] ?? []).map(String).sort()
+        return JSON.stringify(out)
+    }
+
+    // The tiler owns the split state while it runs and reports it; keep the config in step so the
+    // splits survive a restart. Writes only on a real difference (the config echoes back unchanged).
+    function _syncSplits(report): void {
+        if (!report || report.enabled !== true || !report.splits) return
+        const mine = root._canonSplits(report.splits)
+        if (mine !== root._canonSplits(root._parseSplits(Config.options?.tiling?.regionSplits)))
+            Config.setNestedValue("tiling.regionSplits", mine)
     }
 
     function _sendTilingConfig(): void {
@@ -111,7 +137,7 @@ Singleton {
             return
         switch (event.type) {
         case "ready": root.ready = true; root._sendTilingConfig(); break
-        case "tiling": root.tiling = event; break
+        case "tiling": root.tiling = event; root._syncSplits(event); break
         case "fullscreen": root.fullscreen = event.value === true; break
         case "capture": root.capture = event.value === true; break
         case "jobs": root.activeJobs = Math.max(0, Number(event.count) || 0); break

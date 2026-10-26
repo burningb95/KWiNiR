@@ -85,7 +85,7 @@ TILING_COMMANDS = {
     "move-window-up", "move-window-down", "consume-left", "consume-right", "expel",
     "consume-or-expel-left", "consume-or-expel-right", "cycle-width", "maximize-column",
     "center-column", "float-toggle", "relayout", "adopt", "focus-column",
-    "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down",
+    "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down", "split-region",
 }
 CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
 # KWin port: with --quicktile (and --tiling) the stock Meta+arrow quick-tile bindings are released
@@ -419,6 +419,23 @@ def _str_list(v, max_items, max_len, pattern=None):
     return out
 
 
+SPLIT_KEY_RE = re.compile(r"^-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}$")
+
+
+def clean_splits(v):
+    """{output: ["x,y,w,h", ...]} -> the same with bad entries dropped; None when it is not a dict."""
+    if not isinstance(v, dict) or len(v) > 8:
+        return None if not isinstance(v, dict) else {}
+    out = {}
+    for name, keys in v.items():
+        if not isinstance(name, str) or not OUTPUT_RE.match(name) or not isinstance(keys, list) or len(keys) > 16:
+            continue
+        good = [k for k in keys if isinstance(k, str) and SPLIT_KEY_RE.match(k)]
+        if good:
+            out[name] = sorted(good)
+    return out
+
+
 def clean_tiling_config(c):
     """Config from the bar -> the fields the script accepts (bad fields are dropped)."""
     if not isinstance(c, dict):
@@ -449,6 +466,12 @@ def clean_tiling_config(c):
     region_outputs = _str_list(c.get("regionOutputs"), 8, 64, OUTPUT_RE)
     if region_outputs is not None:          # an empty list is valid: no output uses regions
         out["regionOutputs"] = region_outputs
+    splits = clean_splits(c.get("regionSplits"))
+    if splits is not None:
+        out["regionSplits"] = splits
+    for key in ("newWindowOverlay", "arrowKeysScrollStrips"):
+        if isinstance(c.get(key), bool):
+            out[key] = c[key]
     if c.get("regionsNewWindow") in ("smart", "focused"):
         out["regionsNewWindow"] = c["regionsNewWindow"]
     for key in ("onlyClasses", "floatClasses"):
@@ -518,7 +541,10 @@ def clean_tiling_report(e):
         outputs[name] = {"desktop": o["desktop"], "focusedColumn": int(o["focusedColumn"]),
                          "scroll": float(o["scroll"]), "vertical": o.get("vertical") is True,
                          "mode": "regions" if o.get("mode") == "regions" else "strip", "columns": out_cols}
-    return {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
+    report = {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
+    splits = clean_splits(e.get("splits"))
+    report["splits"] = splits if splits is not None else {}
+    return report
 
 
 class Bridge:

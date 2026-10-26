@@ -1353,6 +1353,15 @@ Singleton {
                 // Where a new window goes in regions mode: "smart" = the slot already holding its app,
                 // else the largest empty slot, else the focused one; "focused" = the focused slot.
                 property string regionsNewWindow: "smart"
+                // Tiles of KWin's layout split top / bottom with Ctrl+Meta+S: JSON {"DP-1": ["<x,y,w,h>", ...]},
+                // written by the bar from the tiler's reports, never edited by hand.
+                property string regionSplits: "{}"
+                // A new window opens over a tiled window (same cell) instead of getting a cell of its
+                // own, so nothing scrolls and nothing else is hidden.
+                property bool newWindowOverlay: true
+                // Meta+arrow on a scrolling monitor moves / snaps columns; off = it leaves them alone
+                // (on a regions monitor Meta+arrow only moves between regions).
+                property bool arrowKeysScrollStrips: false
                 property bool centerSingle: false         // a lone column sits in the middle
                 property bool expandSingle: false         // a lone column fills the working area
                 // Empty = tile every tileable window; otherwise only these window classes.
