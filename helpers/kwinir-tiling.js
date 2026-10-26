@@ -58,7 +58,7 @@ function makeColumn(frac) { return { windows: [], frac: frac, prevFrac: null, fo
 // vertical: the strip runs top to bottom (portrait outputs) and a column's windows sit side by
 // side; everything below is written in main axis (along the strip) / cross axis (across it).
 // weights: window id -> relative size across the strip axis (missing = 1).
-function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null, vertical: false, weights: {} }; }
+function makeStrip() { return { columns: [], focusedColumn: 0, scrollX: 0, lastLayout: null, vertical: false, weights: {}, align: null }; }
 
 function resetWeights(strip, col) {
     for (var i = 0; i < col.windows.length; i++) delete strip.weights[wid(col.windows[i])];
@@ -886,8 +886,10 @@ function layoutAll(focusTarget) {
                 reveal(strip, strip.focusedColumn);
                 // Everything fits: nothing may stay scrolled (and minimized) from when there was more.
                 var xs2 = columnXs(strip, area, cfg), end = xs2[xs2.length - 1];
-                if (end.x + end.w + cfg.gap <= mainLen(strip, area) + 1 && cfg.center !== "always"
-                        && !(cfg.centerSingle && strip.columns.length === 1)) strip.scrollX = 0;
+                var fits = end.x + end.w + cfg.gap <= mainLen(strip, area) + 1;
+                if (!fits) strip.align = null;
+                else if (strip.align === "right") strip.scrollX = end.x + end.w + cfg.gap - mainLen(strip, area);   // flush with the far edge
+                else if (cfg.center !== "always" && !(cfg.centerSingle && strip.columns.length === 1)) strip.scrollX = 0;
             }
             var entries = strip.kind === "zone" ? zoneLayout(strip, area, cfg) : computeLayout(strip, area, cfg);
             strip.lastLayout = entries;
@@ -1129,7 +1131,7 @@ function verifyDirty() {
 
 function cloneStrip(strip) {
     var cp = makeStrip(), id;
-    cp.focusedColumn = strip.focusedColumn; cp.scrollX = strip.scrollX; cp.vertical = strip.vertical;
+    cp.focusedColumn = strip.focusedColumn; cp.scrollX = strip.scrollX; cp.vertical = strip.vertical; cp.align = strip.align;
     for (id in strip.weights) cp.weights[id] = strip.weights[id];
     cp.columns = strip.columns.map(function (col) {
         return { windows: col.windows.slice(), frac: col.frac, prevFrac: col.prevFrac, focusedIndex: col.focusedIndex };
@@ -1194,15 +1196,62 @@ function quickTilePressed(w) {
     else if (rh < 0.75) dir = cy < 0.5 ? "up" : "down";
     w.tile = null;           // KWin puts the frame back where it was
     if (!dir) { forgetRects(strip); layoutAll(w); return; }
-    containerFocusWindow(strip, w);
-    var d = dir === "left" || dir === "up" ? -1 : 1;
-    var moved = false, prev = strip.kind === "zone" ? 0 : strip.focusedColumn;
-    if (strip.kind === "zone") moved = zoneMoveDir(strip, dir);
-    else moved = dirIsMain(strip, dir) ? stripMoveColumn(strip, d) : stripMoveRow(strip, d);
-    if (moved) { if (strip.kind !== "zone") reveal(strip, prev); forgetRects(strip); layoutAll(w); return; }
-    var hop = neighbourOutput(strip.outputName, dir);
-    if (!hop || !w.desktops || w.desktops.length !== 1) { forgetRects(strip); layoutAll(w); return; }
-    hopTo(w, strip, hop, dir);
+    directionalMove(w, strip, dir);
+}
+
+// Is the strip's far edge (dir > 0: end, dir < 0: start) flush with the working area?
+function stripFlush(strip, area, d) {
+    var xs = columnXs(strip, area, cfg);
+    if (!xs.length) return true;
+    if (d > 0) { var last = xs[xs.length - 1]; return last.x + last.w + cfg.gap - strip.scrollX >= mainLen(strip, area) - 1; }
+    return xs[0].x - cfg.gap - strip.scrollX <= 1;
+}
+
+// What Meta+arrow does to a tiled window (also what the quick-tile fallback does):
+//  - a column / window / slot that can move that way moves;
+//  - at the end of a strip the last column first SNAPS to that edge of the monitor (a full-width
+//    one is cut to the default width, the strip is packed flush with the edge) like KDE's
+//    "tile to the right half";
+//  - snapped already, it hops to the next monitor that way and arrives at the edge it came from;
+//  - Up / Down on a landscape strip with nothing to reorder: maximize / restore the column.
+function directionalMove(w, c, dir) {
+    var d = dir === "left" || dir === "up" ? -1 : 1, area = workArea(c);
+    containerFocusWindow(c, w);
+    var prev = c.kind === "zone" ? 0 : c.focusedColumn, moved = false, snapped = false;
+    if (c.kind === "zone") {
+        moved = zoneMoveDir(c, dir);
+    } else if (!area) {
+        moved = false;
+    } else if (!dirIsMain(c, dir)) {
+        moved = stripMoveRow(c, d);
+        if (!moved && !c.vertical) {                   // landscape Up / Down
+            var col = c.columns[c.focusedColumn];
+            if (dir === "up" && col.frac < 0.99) moved = stripToggleMaximize(c);
+            else if (dir === "down" && col.prevFrac !== null) moved = stripToggleMaximize(c);
+        }
+    } else {
+        moved = stripMoveColumn(c, d);
+        if (!moved) {
+            var idx = d > 0 ? c.columns.length - 1 : 0, col2 = c.columns[idx];
+            var wide = col2.frac > cfg.defaultWidth + 0.01, flushed = stripFlush(c, area, d);
+            if (wide || !flushed) {
+                if (wide) { col2.frac = cfg.defaultWidth; col2.prevFrac = null; }
+                c.align = d > 0 ? "right" : null;
+                if (d > 0) c.scrollX = (function () { var xs = columnXs(c, area, cfg), e = xs[xs.length - 1]; return e.x + e.w + cfg.gap - mainLen(c, area); })();
+                else c.scrollX = 0;
+                moved = true; snapped = true;
+            }
+        }
+    }
+    if (moved) {
+        if (c.kind !== "zone" && !snapped) reveal(c, prev);
+        forgetRects(c);
+        layoutAll(w);
+        return;
+    }
+    var hop = neighbourOutput(c.outputName, dir);
+    if (!hop || !w.desktops || w.desktops.length !== 1) { forgetRects(c); layoutAll(w); return; }
+    hopTo(w, c, hop, dir);
 }
 
 // Sends `w` to the next tiling monitor in `dir`; it arrives at the edge it came in from.
@@ -1223,6 +1272,7 @@ function hopTo(w, from, hop, dir) {
         return;
     }
     var target = getStrip(hop, desk, true);
+    if (!target.columns.length) target.align = d < 0 ? "right" : null;   // a lone arrival sits at the edge it came in from
     moveToStrip(w, target, d < 0 ? target.columns.length : 0, frac);
 }
 
@@ -1474,7 +1524,27 @@ function moveDir(dir) {
         return dirIsMain(s, dir) ? stripMoveColumn(s, d) : stripMoveRow(s, d);
     }, function (z) { return zoneMoveDir(z, dir); });
 }
+// Meta+arrow while the tiler owns the keys: a tiled window follows directionalMove; any other
+// window (floating, or on a monitor that does not tile) gets KDE's own quick tile, invoked by name.
+var QUICK_TILE = { left: "Window Quick Tile Left", right: "Window Quick Tile Right",
+                   up: "Window Quick Tile Top", down: "Window Quick Tile Bottom" };
+
+function snapDir(dir) {
+    var w = workspace.activeWindow, c = w ? stripOf(w) : null;
+    if (w && w.fullScreen) return { ok: true, changed: false };
+    if (!c) {
+        callDBus("org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component", "invokeShortcut", QUICK_TILE[dir]);
+        return { ok: true, passed: true };
+    }
+    directionalMove(w, c, dir);
+    return { ok: true };
+}
+
 var COMMANDS = {
+    "snap-left": function () { return snapDir("left"); },
+    "snap-right": function () { return snapDir("right"); },
+    "snap-up": function () { return snapDir("up"); },
+    "snap-down": function () { return snapDir("down"); },
     "focus-left": function () { return focusDir("left"); },
     "focus-right": function () { return focusDir("right"); },
     "focus-up": function () { return focusDir("up"); },
@@ -1601,6 +1671,10 @@ var SHORTCUTS = [
     { text: "Maximize column", key: "Meta+Alt+F", cmd: "maximize-column" },
     { text: "Center column", key: "Meta+Alt+C", cmd: "center-column" },
     { text: "Toggle floating", key: "Meta+Alt+V", cmd: "float-toggle" },
+    { text: "Snap left", key: "Meta+Left", cmd: "snap-left" },
+    { text: "Snap right", key: "Meta+Right", cmd: "snap-right" },
+    { text: "Snap up", key: "Meta+Up", cmd: "snap-up" },
+    { text: "Snap down", key: "Meta+Down", cmd: "snap-down" },
     { text: "Switch this monitor between scrolling and fixed regions", key: "Meta+Alt+G", cmd: "toggle-mode" },
     { text: "Send window to region 1", key: "Meta+Alt+1", cmd: "send-to-slot", arg: 1 },
     { text: "Send window to region 2", key: "Meta+Alt+2", cmd: "send-to-slot", arg: 2 },
