@@ -895,11 +895,21 @@ Item {
                 }
             }
 
+            // KWin port (new): the scrolling tiler's column minimap; collapses when nothing is tiled.
+            PillTiling {
+                id: tilingStrip
+                anchors.verticalCenter: parent.verticalCenter
+                visible: shown && (pill.hoverModules?.workspaces ?? true)
+                enabled: hover.live
+                screenName: pill.screenName
+                s: pill.s
+            }
+
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 28 * pill.s
-                visible: ws.visible
+                visible: ws.visible || tilingStrip.visible
                 color: PillTheme.hair
             }
 

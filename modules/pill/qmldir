@@ -35,6 +35,7 @@ PillSysmonSurface 1.0 PillSysmonSurface.qml
 singleton PillTheme 1.0 PillTheme.qml
 PillTrayMenu 1.0 PillTrayMenu.qml
 singleton PillWeather 1.0 PillWeather.qml
+PillTiling 1.0 PillTiling.qml
 PillWorkspaces 1.0 PillWorkspaces.qml
 SearchField 1.0 SearchField.qml
 SettingsSeg 1.0 SettingsSeg.qml
