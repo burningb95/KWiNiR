@@ -484,7 +484,7 @@ ContentPage {
                         { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
                         { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
-                        { keys: "Meta + ← → ↑ ↓", what: Translation.tr("Regions mode: move the window to the neighbouring region that way (within the monitor). Scrolling monitors: nothing, unless enabled above") },
+                        { keys: "Meta + ← → ↑ ↓", what: Translation.tr("Regions mode: move the window to the neighbouring region that way (within the monitor): it swaps with a single window there, joins a stack, or fills an empty region. Scrolling monitors: nothing, unless enabled above") },
                         { keys: "Ctrl+Meta+S", what: Translation.tr("Regions mode: split the focused region into a top and a bottom half, or merge it back") },
                         { keys: "Meta+Alt+G", what: Translation.tr("Switch this monitor between scrolling columns and fixed regions") },
                         { keys: "Meta+Alt+1 … 6", what: Translation.tr("Regions mode: send the window to region 1 … 6") }

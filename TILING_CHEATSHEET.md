@@ -68,7 +68,7 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 
 | Keys | Does on a tiled window |
 |---|---|
-| `Meta+←/→/↑/↓` on a **regions** monitor | moves the window to the **neighbouring region** that way (within the monitor, never across monitors: `Meta+Shift+←/→` is KDE's move-to-screen). Nothing that way: it stays. No stack reordering, no scrolling |
+| `Meta+←/→/↑/↓` on a **regions** monitor | moves the window to the **neighbouring region** that way (within the monitor, never across monitors: `Meta+Shift+←/→` is KDE's move-to-screen). A region holding **one** window **swaps places** with it; an empty region just receives the window; a region that already holds a **stack** gets the window added to the stack. Nothing that way: it stays. No stack reordering, no scrolling |
 | `Meta+←/→` on a scrolling monitor | **nothing**, unless Settings › Tiling › Keys › "Meta + arrows also move columns" is on. Then: moves the window that way (like `Meta+Alt+Shift+H/L`). At the end of the strip the window first **snaps to that edge of the monitor** (a full-width window becomes half width, flush against the edge, like KDE's "tile to the right half"); pressed again it **hops to the next monitor** that way and arrives at the edge it came in from. Nothing that way: stays put |
 | `Meta+↑/↓` | moves the window up / down inside its stack; with nothing to reorder, `↑` maximizes the column and `↓` restores it (on a portrait monitor they work like `←/→` do on a landscape one) |
 | `Meta+Shift+←/→` (move to previous / next screen) | KWin sends the window to that monitor and the tiler slots it in next to that monitor's focused column |

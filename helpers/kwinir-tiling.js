@@ -582,6 +582,23 @@ function zoneMoveToSlot(zone, to) {
     return true;
 }
 
+// Meta+arrow into a slot: a slot holding ONE window swaps places with the focused window (the
+// other one takes its row); an empty slot just receives it; a slot already holding a stack gets
+// it added to the stack.
+function zoneSnapTo(zone, to) {
+    var from = zone.slots[zone.focusedSlot], tgt = zone.slots[to];
+    if (!from || !from.windows.length || !tgt || to === zone.focusedSlot) return false;
+    if (tgt.windows.length === 1) {
+        var i = from.focused, w = from.windows[i];
+        from.windows[i] = tgt.windows[0];
+        tgt.windows[0] = w;
+        tgt.focused = 0;
+        zone.focusedSlot = to;
+        return true;
+    }
+    return zoneMoveToSlot(zone, to);
+}
+
 // Nearest slot in a direction ("left"|"right"|"up"|"down"), by the slots' centres; a slot must
 // overlap the origin along the other axis. nonEmpty: skip slots without windows.
 function zoneNeighbour(zone, from, dir, nonEmpty) {
@@ -1314,9 +1331,9 @@ function directionalMove(w, c, dir) {
     containerFocusWindow(c, w);
     var prev = c.kind === "zone" ? 0 : c.focusedColumn, moved = false, snapped = false;
     if (c.kind === "zone") {
-        // Meta+arrow only moves between regions: no reordering inside a stack, no hopping monitors
+        // Meta+arrow only moves between regions (swap with a single occupant): no stack reordering, no hopping monitors
         var to = zoneNeighbour(c, c.focusedSlot, dir, false);
-        moved = to >= 0 ? zoneMoveToSlot(c, to) : false;
+        moved = to >= 0 ? zoneSnapTo(c, to) : false;
         forgetRects(c);
         layoutAll(w);
         return;
