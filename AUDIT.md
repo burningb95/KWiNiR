@@ -337,3 +337,22 @@ See *Summary → Needs approval — recommendations* above.
   29 settings pages rendered → warnings only on hidden niri/iNiR pages + #6. Summary written.
 - Hot-reload/kill test found orphaned children (#7) — fixed `6ef15c1`, 54 test leftovers
   killed. (A plain `touch` doesn't trigger a Quickshell reload; content must change.)
+
+## Tiling additions (2026-10-26) — new attack surface, reviewed
+
+New and changed, all behind `tiling.enable` (off by default). Nothing here runs unless the bar
+starts the helper with `--tiling`.
+
+| Surface | What it is | Controls |
+|---|---|---|
+| `org.kwinir.Bridge.NextCommand` / `Ack` (session bus) | The KWin script long-polls for commands. **Any process on the user's session bus can call them** — the same trust level the existing `Event` method already had | Commands and config only ever come from the bar's stdin, never from D-Bus callers. A rogue `NextCommand` caller can at most *steal* a pending command (denial of that command), not inject one; a rogue `Ack` can only complete a wait. Replies are tiny JSON built by the helper |
+| stdin channel (bar → helper) | One JSON object per line, ≤ 64 KiB | Command **whitelist** (`TILING_COMMANDS`: 20 names; `dump`, `windows`, `config`, `release-all` are not accepted from the bar); `focus-column` arg 0–63; `adopt` arg `^[A-Za-z0-9._@+*-]{1,100}$`; queue capped at 32; config fields range/charset-checked, bad fields dropped (13 unit tests) |
+| `tiling` report (script → helper → bar) | Column/window layout, no titles | Rebuilt field by field: caps on outputs (8), columns (128), windows/column (32), string lengths (64), numeric ranges; extra fields dropped. App ids are shown only as plain text |
+| `kglobalshortcutsrc` | The script's `registerShortcut` calls persist as `[kwin] KWiNiR Tiling: …` | Removed by the helper on quit and whenever it starts without `--tiling`; removal verified byte-identical |
+| Released bindings | Meta+Alt+K / L (keyboard-layout switch) and Meta+Alt+R (screen recording) were cleared in kglobalaccel **at the owner's request** | `REVERT-tiling-keys.sh` restores them (tested) |
+| `loadScript` | Loads `helpers/kwinir-tiling.js` by absolute path under the shell dir, by name `kwinir-tiling` | Same mechanism as the fullscreen script; a replaced bridge no longer unloads the winner's scripts (fixed) |
+| Window classes in config | Used to match, never executed or interpolated into a shell | Charset-checked in the helper and the settings UI |
+
+Not verified: behaviour with a hostile local process on the session bus beyond the above
+reasoning; the KWin script engine's own sandboxing (it can move and minimize any window and
+register global shortcuts by design).

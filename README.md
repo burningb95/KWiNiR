@@ -31,6 +31,9 @@ Not affiliated with the iNiR project.
   step beneath it and give it the keyboard, then return
 - Caffeine through the Wayland idle-inhibit protocol, respected by PowerDevil
 - Pill power menu: lock, logout, reboot, shutdown through Plasma's session manager
+- **Scrolling tiling** (off by default): niri-style columns for your windows through a KWin
+  script the bridge loads at runtime, with a column minimap in the pill and keys listed under
+  Settings › Advanced › *Tiling* / *Reset & shortcuts*. See *Scrolling tiling* below
 
 Not available: anything needing a window list (KWin exposes no foreign-toplevel protocol
 to Quickshell) and per-output workspaces.
@@ -76,6 +79,17 @@ systemctl --user daemon-reload && systemctl --user enable --now pillbar
 Configuration lives at `~/.config/pillbar/config.json` (iNiR's schema, created on first run).
 For the sidebar avatar, put any image at `~/.config/pillbar/avatar.png` (or `.jpg`).
 
+### Scrolling tiling
+
+Off until you turn it on (Settings › Advanced › Tiling, or `ipc call tiling enable`). Turning
+it on tiles the windows that are open — or only the classes in *Only tile these apps*. Columns
+scrolled out of view are minimized (KWin won't park a window off the monitors). It registers
+KWin global shortcuts (`Meta+Alt+H/L/J/K`, `Ctrl+Alt+arrows`, …, listed in Settings), and
+turning tiling off unregisters them and restores every window. **If anything goes wrong:**
+`sh ~/.local/share/Fancy-Floating-Bar/tools/tiling-rescue.sh`. Details, patches and limits:
+[`KWIN_PORT.md`](KWIN_PORT.md) › *Scrolling tiling*. Meta+Alt+K/L/R were keyboard-layout and
+screen-recording keys on a stock Plasma; the maintainer released them for this.
+
 ### Hotkeys
 
 ```sh
@@ -96,6 +110,8 @@ qs -c pillbar ipc call pill peek               # reveal the pill briefly (stand-
 qs -c pillbar ipc call palette apply plum      # also: list / current
 qs -c pillbar ipc call gamemode toggle         # also: activate / deactivate / status
 qs -c pillbar ipc call idle toggle             # caffeine; also on / off / state
+qs -c pillbar ipc call tiling toggle           # also: enable / disable / status
+qs -c pillbar ipc call tiling command focus-right      # any tiling command; commandArg focus-column 2
 ```
 
 ### Notifications
@@ -146,6 +162,12 @@ Every page has **Reset** at the bottom (click twice): *my setup* restores
 | `sidebar.widgets.spacers` | `[]` | blank spacers, `"spacer-N=<px>"`, placed via `widgetOrder` |
 | `sidebar.widgets.controlsCard.{showEasyEffects,showCaffeine}` | `true`, `true` | extra Controls-card toggles |
 | `sidebar.right.avatarPath` | `""` | bar-only avatar; `""` = `~/.config/pillbar/avatar.*` |
+| `tiling.enable` | `false` | scrolling tiling on/off (restarts the bridge helper) |
+| `tiling.outputs` | `["@primary"]` | monitors that tile; `@primary` = KDE's first-ranked, `@all` = every monitor |
+| `tiling.{gap,defaultWidth,presetWidths,center,bottomMargin}` | `12`, `0.5`, `[0.333,0.5,0.667]`, `"on-overflow"`, `0` | layout |
+| `tiling.onlyClasses` | `[]` | empty = every tileable window, else only these window classes |
+| `tiling.floatClasses` | spectacle, krunner, polkit, kwallet, steam games, … | classes that never tile (`*` = prefix) |
+| `tiling.shortcuts` | `true` | register the tiling keys |
 
 ### Adding a configurable option
 
