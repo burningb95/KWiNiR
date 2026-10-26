@@ -27,6 +27,8 @@ var DEFAULTS = {
         "org.kde.kscreenlocker_greet", "steam_app_*", "pinentry*", "kwinir-float*"
     ],
     struts: { left: 0, right: 0, top: 0, bottom: 0 },   // px kept clear on every tiling output
+    regionOutputs: [],                // outputs that use fixed regions (KWin's tile layout) instead of the strip
+    regionsNewWindow: "smart",        // "smart": same app's slot, else an empty slot, else the focused one | "focused"
     portraitVertical: true,           // portrait outputs scroll vertically (rows) instead of columns
     portraitDockStrip: 8,             // extra px kept clear at the bottom of portrait outputs (a dock's hover strip)
     centerSingle: false,              // a lone column sits centred
@@ -405,12 +407,229 @@ function matchesClass(cls, patterns) {
     return false;
 }
 
+
+// ---------------------------------------------------------------- Pure: fixed regions
+// A zone is the alternative to a strip on an output: the slots are the leaf tiles of KWin's own
+// tile layout for that output (System Settings / Meta+T editor), as fractions of the working
+// area. A slot holds a stack of windows, split evenly top to bottom. Nothing scrolls, nothing
+// is hidden.
+function makeZone(rects) {
+    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "" };
+    zoneSetRects(z, rects);
+    z.focusedSlot = largestSlot(z.slots);
+    return z;
+}
+
+function zoneSetRects(zone, rects) {
+    var old = zone.slots || [];
+    zone.slots = rects.map(function (r, i) {
+        return { rect: r, windows: old[i] ? old[i].windows : [], focused: old[i] ? old[i].focused : 0 };
+    });
+    zone.sig = JSON.stringify(rects);
+}
+
+function largestSlot(slots) {
+    var best = 0, area = -1;
+    for (var i = 0; i < slots.length; i++) {
+        var a = slots[i].rect.w * slots[i].rect.h;
+        if (a > area + 1e-9) { area = a; best = i; }
+    }
+    return best;
+}
+
+function zoneFind(zone, w) {
+    var id = wid(w);
+    for (var s = 0; s < zone.slots.length; s++)
+        for (var i = 0; i < zone.slots[s].windows.length; i++)
+            if (wid(zone.slots[s].windows[i]) === id) return { s: s, i: i };
+    return null;
+}
+
+// Every window, slot by slot, top to bottom.
+function zoneWindows(zone) {
+    var out = [];
+    for (var s = 0; s < zone.slots.length; s++)
+        for (var i = 0; i < zone.slots[s].windows.length; i++) out.push(zone.slots[s].windows[i]);
+    return out;
+}
+
+function zoneFocusedWindow(zone) {
+    var slot = zone.slots[zone.focusedSlot];
+    return slot ? slot.windows[slot.focused] || null : null;
+}
+
+// The window goes to the bottom of that slot's stack and takes focus.
+function zoneAdd(zone, w, slotIdx) {
+    var at = clamp(slotIdx, 0, zone.slots.length - 1), slot = zone.slots[at];
+    slot.windows.push(w);
+    slot.focused = slot.windows.length - 1;
+    zone.focusedSlot = at;
+    return at;
+}
+
+function zoneRemove(zone, w) {
+    var at = zoneFind(zone, w);
+    if (!at) return false;
+    var slot = zone.slots[at.s];
+    slot.windows.splice(at.i, 1);
+    if (slot.focused > at.i || slot.focused >= slot.windows.length) slot.focused = Math.max(0, slot.focused - 1);
+    return true;
+}
+
+function zoneFocusWindow(zone, w) {
+    var at = zoneFind(zone, w);
+    if (!at) return false;
+    zone.focusedSlot = at.s;
+    zone.slots[at.s].focused = at.i;
+    return true;
+}
+
+// Focus moves up / down the focused slot's stack.
+function zoneFocusRow(zone, delta) {
+    var slot = zone.slots[zone.focusedSlot];
+    if (!slot) return false;
+    var n = clamp(slot.focused + delta, 0, slot.windows.length - 1);
+    if (n === slot.focused || !slot.windows.length) return false;
+    slot.focused = n;
+    return true;
+}
+
+// The focused window swaps places with its neighbour in the stack.
+function zoneMoveRow(zone, delta) {
+    var slot = zone.slots[zone.focusedSlot];
+    if (!slot) return false;
+    var a = slot.focused, b = a + delta;
+    if (b < 0 || b >= slot.windows.length) return false;
+    var t = slot.windows[a]; slot.windows[a] = slot.windows[b]; slot.windows[b] = t;
+    slot.focused = b;
+    return true;
+}
+
+// Moves the focused window to the bottom of another slot's stack.
+function zoneMoveToSlot(zone, to) {
+    var from = zone.slots[zone.focusedSlot];
+    if (!from || !from.windows.length || to < 0 || to >= zone.slots.length || to === zone.focusedSlot) return false;
+    var w = from.windows[from.focused];
+    zoneRemove(zone, w);
+    zoneAdd(zone, w, to);
+    return true;
+}
+
+// Nearest slot in a direction ("left"|"right"|"up"|"down"), by the slots' centres; a slot must
+// overlap the origin along the other axis. nonEmpty: skip slots without windows.
+function zoneNeighbour(zone, from, dir, nonEmpty) {
+    var a = zone.slots[from].rect, ax = a.x + a.w / 2, ay = a.y + a.h / 2, best = -1, bestD = 1e9;
+    for (var j = 0; j < zone.slots.length; j++) {
+        if (j === from || (nonEmpty && !zone.slots[j].windows.length)) continue;
+        var b = zone.slots[j].rect, bx = b.x + b.w / 2, by = b.y + b.h / 2, along, across;
+        if (dir === "left" || dir === "right") {
+            if (b.y >= a.y + a.h - 1e-6 || b.y + b.h <= a.y + 1e-6) continue;
+            along = dir === "left" ? ax - bx : bx - ax; across = Math.abs(by - ay);
+        } else {
+            if (b.x >= a.x + a.w - 1e-6 || b.x + b.w <= a.x + 1e-6) continue;
+            along = dir === "up" ? ay - by : by - ay; across = Math.abs(bx - ax);
+        }
+        if (along <= 1e-6) continue;
+        var d = along + across * 0.5;
+        if (d < bestD) { bestD = d; best = j; }
+    }
+    return best;
+}
+
+// The slot a window arriving while moving in `dir` should land in: the one nearest the edge it
+// enters from.
+function zoneEdgeSlot(zone, dir) {
+    var best = 0, bestV = null;
+    for (var j = 0; j < zone.slots.length; j++) {
+        var r = zone.slots[j].rect, v;
+        if (dir === "left") v = -(r.x + r.w);            // moving left: arrives at the right edge
+        else if (dir === "right") v = r.x;
+        else if (dir === "up") v = -(r.y + r.h);
+        else v = r.y;
+        if (bestV === null || v < bestV - 1e-9) { bestV = v; best = j; }
+    }
+    return best;
+}
+
+// Which slot a new window goes to. smart: a slot already holding a window of its app (the
+// focused slot wins a tie), else the largest empty slot, else the focused slot. focused: always
+// the focused slot.
+function zoneSlotFor(zone, w, policy) {
+    if (policy === "focused") return zone.focusedSlot;
+    var app = String(w.resourceClass || ""), j, found = -1;
+    for (j = 0; j < zone.slots.length && found < 0; j++) {
+        var k = (zone.focusedSlot + j) % zone.slots.length;
+        for (var i = 0; i < zone.slots[k].windows.length; i++)
+            if (String(zone.slots[k].windows[i].resourceClass || "") === app) { found = k; break; }
+    }
+    if (found >= 0) return found;
+    var bestA = -1;
+    for (j = 0; j < zone.slots.length; j++) {
+        if (zone.slots[j].windows.length) continue;
+        var a = zone.slots[j].rect.w * zone.slots[j].rect.h;
+        if (a > bestA + 1e-9) { bestA = a; found = j; }
+    }
+    return found >= 0 ? found : zone.focusedSlot;
+}
+
+function zoneSlotAt(zone, area, px, py) {
+    var fx = (px - area.x) / area.width, fy = (py - area.y) / area.height, best = 0, bestD = 1e9;
+    for (var j = 0; j < zone.slots.length; j++) {
+        var r = zone.slots[j].rect;
+        var dx = fx < r.x ? r.x - fx : (fx > r.x + r.w ? fx - r.x - r.w : 0);
+        var dy = fy < r.y ? r.y - fy : (fy > r.y + r.h ? fy - r.y - r.h : 0);
+        var d = dx * dx + dy * dy;
+        if (d < bestD - 1e-12) { bestD = d; best = j; }
+    }
+    return best;
+}
+
+// Pure: where every window goes. Edges on the area's border keep `gap`, edges shared with a
+// neighbouring slot keep half of it, so adjacent slots are `gap` apart.
+function zoneLayout(zone, area, c) {
+    var out = [], half = c.gap / 2;
+    for (var s = 0; s < zone.slots.length; s++) {
+        var slot = zone.slots[s], r = slot.rect, n = slot.windows.length;
+        if (!n) continue;
+        var L = Math.round(area.x + r.x * area.width + (r.x <= 0.001 ? c.gap : half));
+        var R = Math.round(area.x + (r.x + r.w) * area.width - (r.x + r.w >= 0.999 ? c.gap : half));
+        var T = Math.round(area.y + r.y * area.height + (r.y <= 0.001 ? c.gap : half));
+        var B = Math.round(area.y + (r.y + r.h) * area.height - (r.y + r.h >= 0.999 ? c.gap : half));
+        var total = (B - T) - c.gap * (n - 1), h = Math.floor(total / n);
+        for (var i = 0; i < n; i++)
+            out.push({ window: slot.windows[i], column: s, row: i, visible: true,
+                       rect: { x: L, y: T + i * (h + c.gap), width: R - L, height: i === n - 1 ? total - h * (n - 1) : h } });
+    }
+    return out;
+}
+
+// Leaf tiles of KWin's tile tree as fractions of the root's area, in layout order.
+function leafRects(root) {
+    var ra = root.absoluteGeometry, out = [];
+    (function walk(t) {
+        var kids = t.tiles;
+        if (!kids || !kids.length) {
+            var a = t.absoluteGeometry;
+            var q = function (v) { return Math.round(v * 10000) / 10000; };
+            out.push({ x: q((a.x - ra.x) / ra.width), y: q((a.y - ra.y) / ra.height), w: q(a.width / ra.width), h: q(a.height / ra.height) });
+            return;
+        }
+        for (var i = 0; i < kids.length; i++) walk(kids[i]);
+    })(root);
+    var horizontal = root.layoutDirection === undefined || root.layoutDirection === 1;
+    out.sort(function (p, q2) { return horizontal ? (p.x - q2.x) || (p.y - q2.y) : (p.y - q2.y) || (p.x - q2.x); });
+    return out;
+}
+
 // ---------------------------------------------------------------- KWin glue
 var KWIN_ENV = typeof workspace !== "undefined" && typeof workspace.windowList === "function";
 
 var state = {
     strips: {},        // key "output|desktopId" -> strip (+ outputName, desktopId)
-    byWin: {},         // window id -> strip key
+    zones: {},         // key "Z:output|desktopId" -> zone (fixed regions), for outputs in regions mode
+    modeFlip: {},      // output name -> "strip" | "regions": toggle-mode overrides cfg.regionOutputs
+    regionsSig: "",    // signature of the tile layouts last seen, to notice Meta+T edits
+    byWin: {},         // window id -> strip or zone key
     floating: {},      // window id -> true when the user floated it (never auto-tiled)
     scriptMin: {},     // window id -> true when WE minimized it
     expectMin: {},     // window id -> value we just set, so the signal is not mistaken for the user
@@ -439,10 +658,10 @@ function guard(name, fn) {
 
 // cfg.outputs with "@primary" resolved to KWin's priority-1 output (screenOrder[0]) and "@all"
 // to every screen.
-function tilingOutputNames() {
+function resolveOutputs(list) {
     var out = [];
-    for (var i = 0; i < cfg.outputs.length; i++) {
-        var n = cfg.outputs[i];
+    for (var i = 0; i < list.length; i++) {
+        var n = list[i];
         if (n === "@all") {
             for (var k = 0; k < workspace.screens.length; k++)
                 if (out.indexOf(workspace.screens[k].name) < 0) out.push(workspace.screens[k].name);
@@ -454,7 +673,15 @@ function tilingOutputNames() {
     return out;
 }
 
+function tilingOutputNames() { return resolveOutputs(cfg.outputs); }
+
 function tilingOutput(name) { return tilingOutputNames().indexOf(name) >= 0; }
+
+// "regions" (fixed slots from KWin's tile layout) or "strip" (scrolling columns), per output.
+function outputMode(name) {
+    if (state.modeFlip[name]) return state.modeFlip[name];
+    return resolveOutputs(cfg.regionOutputs).indexOf(name) >= 0 ? "regions" : "strip";
+}
 
 function outputByName(name) {
     var s = workspace.screens;
@@ -480,12 +707,80 @@ function getStrip(outName, deskId, create) {
     return s || null;
 }
 
+function zoneKey(outName, deskId) { return "Z:" + outName + "|" + deskId; }
+
+// The slots of KWin's tile layout for (output, desktop), as fractions of its area.
+function readRegions(out, desk) {
+    var rects = [];
+    try {
+        var root = workspace.rootTile(out, desk);
+        if (root) rects = leafRects(root);
+    } catch (e) { log("could not read the tile layout of " + out.name + ": " + e); }
+    return rects.length ? rects : [{ x: 0, y: 0, w: 1, h: 1 }];
+}
+
+function getZone(outName, deskId, create) {
+    var key = zoneKey(outName, deskId), z = state.zones[key];
+    if (!z && create) {
+        var out = outputByName(outName), desk = desktopById(deskId);
+        if (!out || !desk) return null;
+        z = makeZone(readRegions(out, desk));
+        z.key = key; z.outputName = outName; z.desktopId = deskId;
+        state.zones[key] = z;
+    }
+    return z || null;
+}
+
+// Meta+T edits: when the layout changed, re-seat every window. Returns true if it did.
+function refreshRegions(zone) {
+    var out = outputByName(zone.outputName), desk = desktopById(zone.desktopId);
+    if (!out || !desk) return false;
+    var rects = readRegions(out, desk), sig = JSON.stringify(rects);
+    if (sig === zone.sig) return false;
+    var focus = zoneFocusedWindow(zone), wins = zoneWindows(zone);
+    var keep = rects.length === zone.slots.length;
+    if (keep) { zoneSetRects(zone, rects); return true; }
+    zone.slots = []; zoneSetRects(zone, rects);
+    zone.focusedSlot = largestSlot(zone.slots);
+    for (var i = 0; i < wins.length; i++) zoneAdd(zone, wins[i], zoneSlotFor(zone, wins[i], cfg.regionsNewWindow));
+    if (focus) zoneFocusWindow(zone, focus);
+    return true;
+}
+
+function allContainers() {
+    var out = [], k;
+    for (k in state.strips) out.push(state.strips[k]);
+    for (k in state.zones) out.push(state.zones[k]);
+    return out;
+}
+
+function containerByKey(key) {
+    if (key === undefined || key === null) return null;
+    return (String(key).indexOf("Z:") === 0 ? state.zones : state.strips)[key] || null;
+}
+
+function contOf(w) { return containerByKey(state.byWin[wid(w)]); }
+
+function windowsOf(c) {
+    if (c.kind === "zone") return zoneWindows(c);
+    var wins = [];
+    for (var i = 0; i < c.columns.length; i++)
+        for (var r = 0; r < c.columns[i].windows.length; r++) wins.push(c.columns[i].windows[r]);
+    return wins;
+}
+
+function containerFocused(c) { return c.kind === "zone" ? zoneFocusedWindow(c) : stripFocusedWindow(c); }
+
+function containerFocusWindow(c, w) { return c.kind === "zone" ? zoneFocusWindow(c, w) : stripFocusWindow(c, w); }
+
+function deleteContainer(c) { delete (c.kind === "zone" ? state.zones : state.strips)[c.key]; }
+
 function workArea(strip) {
     var out = outputByName(strip.outputName), desk = desktopById(strip.desktopId);
     if (!out || !desk) return null;
     var a = workspace.clientArea(KWin.MaximizeArea, out, desk), st = cfg.struts;
     var g = out.geometry, portrait = g.height > g.width, vertical = cfg.portraitVertical && portrait;
-    if (vertical !== strip.vertical) { strip.vertical = vertical; strip.scrollX = 0; }
+    if (strip.kind !== "zone" && vertical !== strip.vertical) { strip.vertical = vertical; strip.scrollX = 0; }
     var bottom = st.bottom + (portrait ? cfg.portraitDockStrip : 0);
     return { x: a.x + st.left, y: a.y + st.top,
              width: a.width - st.left - st.right, height: a.height - st.top - bottom };
@@ -518,20 +813,29 @@ function releaseWindow(w) {
 }
 
 function untile(w) {
-    var id = wid(w), key = state.byWin[id];
-    if (key === undefined) return null;
-    var strip = state.strips[key];
-    if (strip) stripRemove(strip, w);
+    var id = wid(w), c = contOf(w);
+    if (state.byWin[id] === undefined) return null;
+    if (c) { if (c.kind === "zone") zoneRemove(c, w); else stripRemove(c, w); }
     delete state.byWin[id];
     releaseWindow(w);
-    return strip;
+    return c;
 }
 
+// Adds w to a fixed-region zone (slot: where, else by the new-window policy).
+function tileZone(w, out, slot) {
+    var zone = getZone(out, w.desktops[0].id, true);
+    if (!zone) return null;
+    if (zoneFind(zone, w)) return zone;
+    zoneAdd(zone, w, slot !== undefined ? slot : zoneSlotFor(zone, w, cfg.regionsNewWindow));
+    state.byWin[wid(w)] = zone.key;
+    return zone;
+}
 // Adds w to the strip of (output, its desktop). Returns the strip or null.
-function tile(w, outName) {
+function tile(w, outName, slot) {
     if (state.released || !state.started || state.floating[wid(w)] || !isTileable(w)) return null;
     var out = outName || w.output.name;
     if (!tilingOutput(out) || !outputByName(out)) return null;
+    if (outputMode(out) === "regions") return tileZone(w, out, slot);
     var strip = getStrip(out, w.desktops[0].id, true);
     if (stripFind(strip, w)) return strip;
     var prev = strip.focusedColumn;
@@ -569,13 +873,23 @@ function layoutAll(focusTarget) {
     state.applying = true;
     var before = workspace.activeWindow, target = focusTarget || null;
     try {
-        var cur = workspace.currentDesktop;
-        for (var key in state.strips) {
-            var strip = state.strips[key];
+        var cur = workspace.currentDesktop, conts = allContainers();
+        for (var ci = 0; ci < conts.length; ci++) {
+            var strip = conts[ci];
             if (strip.desktopId !== cur.id) continue;
             var area = workArea(strip);
             if (!area) continue;
-            var entries = computeLayout(strip, area, cfg);
+            if (strip.kind === "zone") refreshRegions(strip);
+            // A strip whose windows left (moved to another monitor, minimized by the user) may be
+            // scrolled past its end: keep the focused column in view before laying out.
+            else if (strip.columns.length) {
+                reveal(strip, strip.focusedColumn);
+                // Everything fits: nothing may stay scrolled (and minimized) from when there was more.
+                var xs2 = columnXs(strip, area, cfg), end = xs2[xs2.length - 1];
+                if (end.x + end.w + cfg.gap <= mainLen(strip, area) + 1 && cfg.center !== "always"
+                        && !(cfg.centerSingle && strip.columns.length === 1)) strip.scrollX = 0;
+            }
+            var entries = strip.kind === "zone" ? zoneLayout(strip, area, cfg) : computeLayout(strip, area, cfg);
             strip.lastLayout = entries;
             var hide = [];
             for (var i = 0; i < entries.length; i++) {
@@ -592,7 +906,7 @@ function layoutAll(focusTarget) {
                 if (!hide[j].minimized) { setMinimized(hide[j], true); state.scriptMin[wid(hide[j])] = true; }
             }
             if (!target && before && state.byWin[wid(before)] === strip.key)
-                target = entriesVisible(entries, before) ? before : stripFocusedWindow(strip);
+                target = entriesVisible(entries, before) ? before : containerFocused(strip);
         }
     } finally {
         state.applying = false;
@@ -604,7 +918,6 @@ function layoutAll(focusTarget) {
     if (state.pendingLayout) { state.pendingLayout = false; scheduleLayout(); }
     scheduleReport();
 }
-
 function entriesVisible(entries, w) {
     var id = wid(w);
     for (var i = 0; i < entries.length; i++)
@@ -612,6 +925,7 @@ function entriesVisible(entries, w) {
     return false;
 }
 
+var regionsTimer = null;                         // notices Meta+T edits to the tile layouts
 var previewTimer = null, previewArmed = false;   // live neighbour follow during a border drag
 var geomTimer = null;                            // debounce for geometry changes we did not make
 var layoutTimer = null, layoutTimerArmed = false;
@@ -632,55 +946,56 @@ function scheduleRefocus(key) {
 }
 
 function doRefocus() {
-    var strip = refocusKey !== null ? state.strips[refocusKey] : null;
+    var strip = containerByKey(refocusKey);
     refocusKey = null;
     if (!strip || state.released) return;
-    var aw = workspace.activeWindow, target = stripFocusedWindow(strip);
-    if (target && !target.deleted && !(aw && stripOf(aw) === strip)) {
-        reveal(strip, strip.focusedColumn);
+    var aw = workspace.activeWindow, target = containerFocused(strip);
+    if (target && !target.deleted && !(aw && contOf(aw) === strip)) {
+        if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
         layoutAll(target);
     }
 }
-
-function stripOf(w) {
-    var key = state.byWin[wid(w)];
-    return key === undefined ? null : state.strips[key] || null;
-}
-
+function stripOf(w) { return contOf(w); }   // a strip or a zone: callers that need a strip check .kind
 // Window moved desktop/output (or became tileable/untileable): redo its membership.
 function retile(w) {
     if (state.released) return;
-    var old = stripOf(w);
+    var old = contOf(w);
     var wasKey = old ? old.key : null;
     untile(w);
     var s = tile(w);
     if (s || wasKey) scheduleLayout();
 }
-
 // An output went away (monitor off / cable pulled) or stopped tiling: its windows join the
 // first tiling output that still exists; with none left they are released and float.
 function migrateStrips() {
     if (!state.started || state.released) return;
     var live = tilingOutputNames().filter(function (n) { return outputByName(n) !== null; });
-    var stale = [];
-    for (var key in state.strips) {
-        var strip = state.strips[key];
-        if (!outputByName(strip.outputName) || !tilingOutput(strip.outputName)) stale.push(strip);
-    }
+    var stale = allContainers().filter(function (c) { return !outputByName(c.outputName) || !tilingOutput(c.outputName); });
     for (var i = 0; i < stale.length; i++) {
-        var wins = [];
-        for (var c = 0; c < stale[i].columns.length; c++)
-            for (var r = 0; r < stale[i].columns[c].windows.length; r++)
-                wins.push(stale[i].columns[c].windows[r]);
+        var wins = windowsOf(stale[i]);
         for (var j = 0; j < wins.length; j++) {
             untile(wins[j]);
             if (live.length && !wins[j].deleted) tile(wins[j], live[0]);
         }
-        delete state.strips[stale[i].key];
+        deleteContainer(stale[i]);
     }
     if (stale.length) log("output change: moved " + stale.length + " strip(s) to " + (live.length ? live[0] : "nowhere (floating)"));
 }
 
+// An output's mode changed (settings, or toggle-mode): its windows move to the other kind of
+// container, in their current order, and are placed by that mode's rules.
+function migrateModes() {
+    if (!state.started || state.released) return 0;
+    var wrong = allContainers().filter(function (c) { return (outputMode(c.outputName) === "regions") !== (c.kind === "zone"); });
+    var all = [];
+    for (var i = 0; i < wrong.length; i++) {
+        var wins = windowsOf(wrong[i]);
+        for (var j = 0; j < wins.length; j++) { untile(wins[j]); all.push(wins[j]); }
+        deleteContainer(wrong[i]);
+    }
+    for (var k = 0; k < all.length; k++) if (!all[k].deleted) tile(all[k]);
+    return wrong.length;
+}
 function onScreensChanged() {
     migrateStrips();
     reconcile();
@@ -735,7 +1050,9 @@ function wireWindow(w) {
         if (state.applying || !stripOf(w) || !w.maximizeMode) return;
         // KWin maximize on a tiled window means "maximize ITS column" (not the focused one).
         w.setMaximize(false, false);
-        var strip = stripOf(w), at = strip ? stripFind(strip, w) : null;
+        var strip = stripOf(w);
+        if (strip && strip.kind === "zone") { forgetRects(strip); layoutAll(w); return; }   // slots do not maximize
+        var at = strip ? stripFind(strip, w) : null;
         if (!at) return;
         var prev = strip.focusedColumn;
         stripFocusWindow(strip, w);
@@ -752,7 +1069,7 @@ function wireWindow(w) {
         var rec = { start: { x: g.x, y: g.y, width: g.width, height: g.height }, resizing: w.resize === true,
                     body: dragStartedInBody(w),
                     strip: strip, at: null, area: null, entries: null, cur: null };
-        if (strip) {
+        if (strip && strip.kind !== "zone") {
             rec.at = stripFind(strip, w);
             rec.area = workArea(strip);
             rec.entries = rec.area ? computeLayout(strip, rec.area, cfg) : null;
@@ -856,7 +1173,7 @@ function neighbourOutput(fromName, dir) {
 // Takes `w` out of its strip and drops it into `target` as its own column at idx.
 function moveToStrip(w, target, idx, frac) {
     var i = wid(w), old = untile(w);
-    if (old) reveal(old, old.focusedColumn);
+    if (old && old.kind !== "zone") reveal(old, old.focusedColumn);
     var at = stripInsertColumn(target, w, idx, frac);
     state.byWin[i] = target.key;
     forgetRects(target);
@@ -877,19 +1194,56 @@ function quickTilePressed(w) {
     else if (rh < 0.75) dir = cy < 0.5 ? "up" : "down";
     w.tile = null;           // KWin puts the frame back where it was
     if (!dir) { forgetRects(strip); layoutAll(w); return; }
-    stripFocusWindow(strip, w);
-    var d = dir === "left" || dir === "up" ? -1 : 1, prev = strip.focusedColumn;
-    var moved = dirIsMain(strip, dir) ? stripMoveColumn(strip, d) : stripMoveRow(strip, d);
-    if (moved) { reveal(strip, prev); forgetRects(strip); layoutAll(w); return; }
+    containerFocusWindow(strip, w);
+    var d = dir === "left" || dir === "up" ? -1 : 1;
+    var moved = false, prev = strip.kind === "zone" ? 0 : strip.focusedColumn;
+    if (strip.kind === "zone") moved = zoneMoveDir(strip, dir);
+    else moved = dirIsMain(strip, dir) ? stripMoveColumn(strip, d) : stripMoveRow(strip, d);
+    if (moved) { if (strip.kind !== "zone") reveal(strip, prev); forgetRects(strip); layoutAll(w); return; }
     var hop = neighbourOutput(strip.outputName, dir);
     if (!hop || !w.desktops || w.desktops.length !== 1) { forgetRects(strip); layoutAll(w); return; }
-    var at = stripFind(strip, w), solo = at && strip.columns[at.c].windows.length === 1;
-    var frac = solo ? strip.columns[at.c].frac : cfg.defaultWidth;
-    var target = getStrip(hop, w.desktops[0].id, true);
-    // it arrives at the edge it came in from: past the end going left/up, at the start going right/down
+    hopTo(w, strip, hop, dir);
+}
+
+// Sends `w` to the next tiling monitor in `dir`; it arrives at the edge it came in from.
+function hopTo(w, from, hop, dir) {
+    var d = dir === "left" || dir === "up" ? -1 : 1, desk = w.desktops[0].id, frac = cfg.defaultWidth;
+    if (from.kind !== "zone") {
+        var at = stripFind(from, w), solo = at && from.columns[at.c].windows.length === 1;
+        if (solo) frac = from.columns[at.c].frac;
+    }
+    if (outputMode(hop) === "regions") {
+        var zone = getZone(hop, desk, true);
+        if (!zone) return;
+        var old = untile(w);
+        if (old && old.kind !== "zone") reveal(old, old.focusedColumn);
+        tileZone(w, hop, zoneEdgeSlot(zone, dir));
+        forgetRects(zone);
+        layoutAll(w);
+        return;
+    }
+    var target = getStrip(hop, desk, true);
     moveToStrip(w, target, d < 0 ? target.columns.length : 0, frac);
 }
 
+// One step of a directional move inside a zone: left/right go to the neighbouring slot, up/down
+// reorder the stack and, at its end, go to the slot above/below.
+function zoneMoveDir(zone, dir) {
+    if (dir === "up" || dir === "down") {
+        if (zoneMoveRow(zone, dir === "up" ? -1 : 1)) return true;
+    }
+    var to = zoneNeighbour(zone, zone.focusedSlot, dir, false);
+    return to >= 0 ? zoneMoveToSlot(zone, to) : false;
+}
+
+// One step of a directional focus inside a zone.
+function zoneFocusDir(zone, dir) {
+    if ((dir === "up" || dir === "down") && zoneFocusRow(zone, dir === "up" ? -1 : 1)) return true;
+    var to = zoneNeighbour(zone, zone.focusedSlot, dir, true);
+    if (to < 0) return false;
+    zone.focusedSlot = to;
+    return true;
+}
 // While a border is dragged, the neighbour it pushes against follows live (the dragged window
 // is KWin's to move). Nothing is hidden or minimized until the drag ends.
 function previewResize() {
@@ -913,13 +1267,12 @@ function previewResize() {
     } finally { state.applying = false; }
 }
 
-function forgetRects(strip) {
-    for (var c = 0; c < strip.columns.length; c++)
-        for (var r = 0; r < strip.columns[c].windows.length; r++)
-            delete state.lastRect[wid(strip.columns[c].windows[r])];
+function forgetRects(c) {
+    var wins = windowsOf(c);
+    for (var i = 0; i < wins.length; i++) delete state.lastRect[wid(wins[i])];
 }
-
 function finishResize(w, strip, rec, cur) {
+    if (strip.kind === "zone") { forgetRects(strip); layoutAll(w); return; }   // slots are fixed: edit them with Meta+T
     var area = workArea(strip), at = stripFind(strip, w);
     if (area && at) {
         var entries = rec.entries || computeLayout(strip, area, cfg);
@@ -929,29 +1282,44 @@ function finishResize(w, strip, rec, cur) {
     reveal(strip, strip.focusedColumn);
     layoutAll(w);
 }
-
 // A dragged tiled window re-enters the strip where it was dropped: on the monitor it ended up
 // on, in the slot its centre falls in. Two things float it instead: a drag that began inside the
 // window rather than on its title bar (Meta/Alt + left button), and a drop on a monitor that
 // does not tile (it stays where it was dropped).
 function finishMove(w, strip, rec, cur) {
     var i = wid(w), travelled = Math.abs(cur.x - rec.start.x) + Math.abs(cur.y - rec.start.y);
-    var out = w.output;
+    var out = w.output, isZone = strip.kind === "zone";
     var tileable = out && tilingOutput(out.name) && w.desktops && w.desktops.length === 1;
     if (rec.body || (travelled >= 6 && !tileable)) {
         state.floating[i] = true;
         untile(w);
-        reveal(strip, strip.focusedColumn);
+        if (!isZone) reveal(strip, strip.focusedColumn);
         layoutAll(w);
         return;
     }
     if (travelled < 6 || !tileable) { forgetRects(strip); layoutAll(w); return; }
-    var at = stripFind(strip, w), solo = at && strip.columns[at.c].windows.length === 1;
-    var frac = solo ? strip.columns[at.c].frac : cfg.defaultWidth;
-    var target = getStrip(out.name, w.desktops[0].id, true), area = workArea(target);
+    var frac = cfg.defaultWidth;
+    if (!isZone) {
+        var at = stripFind(strip, w);
+        if (at && strip.columns[at.c].windows.length === 1) frac = strip.columns[at.c].frac;
+    }
+    var desk = w.desktops[0].id;
+    if (outputMode(out.name) === "regions") {
+        // dropped on a monitor with fixed regions: into the slot under the window's centre
+        var zone = getZone(out.name, desk, true), zarea = zone ? workArea(zone) : null;
+        if (!zarea) { forgetRects(strip); layoutAll(w); return; }
+        var slot = zoneSlotAt(zone, zarea, cur.x + cur.width / 2, cur.y + cur.height / 2);
+        var old = untile(w);
+        if (old && old.kind !== "zone") reveal(old, old.focusedColumn);
+        tileZone(w, out.name, slot);
+        forgetRects(zone);
+        layoutAll(w);
+        return;
+    }
+    var target = getStrip(out.name, desk, true), area = workArea(target);
     if (!area) { forgetRects(strip); layoutAll(w); return; }
-    untile(w);
-    reveal(strip, strip.focusedColumn);
+    var old2 = untile(w);
+    if (old2 && old2.kind !== "zone") reveal(old2, old2.focusedColumn);
     var centre = target.vertical ? cur.y + cur.height / 2 - area.y : cur.x + cur.width / 2 - area.x;
     var at2 = stripInsertColumn(target, w, dropIndex(target, area, cfg, centre), frac);
     state.byWin[i] = target.key;
@@ -959,7 +1327,6 @@ function finishMove(w, strip, rec, cur) {
     reveal(target, at2);
     layoutAll(w);
 }
-
 function onWindowAdded(w) {
     wireWindow(w);
     var s = tile(w);
@@ -970,7 +1337,7 @@ function onWindowAdded(w) {
 function onWindowRemoved(w) {
     var id = wid(w), strip = stripOf(w), wasActive = state.lastActive === id;
     if (strip) {
-        stripRemove(strip, w);
+        if (strip.kind === "zone") zoneRemove(strip, w); else stripRemove(strip, w);
         delete state.byWin[id];
     }
     delete state.scriptMin[id]; delete state.lastRect[id]; delete state.expectMin[id];
@@ -978,8 +1345,8 @@ function onWindowRemoved(w) {
     delete state.geomDirty[id]; delete state.fixes[id];
     if (state.dragId === id) state.dragId = null;
     if (strip) {
-        reveal(strip, strip.focusedColumn);
-        layoutAll(wasActive ? stripFocusedWindow(strip) : null);
+        if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
+        layoutAll(wasActive ? containerFocused(strip) : null);
         if (wasActive) scheduleRefocus(strip.key);
     } else {
         scheduleLayout();
@@ -991,33 +1358,45 @@ function onWindowActivated(w) {
     if (!w || state.released) return;
     var strip = stripOf(w);
     if (!strip) return;
+    if (strip.kind === "zone") {
+        if (zoneFocusWindow(strip, w)) layoutAll(w);
+        return;
+    }
     var prev = strip.focusedColumn;
     if (!stripFocusWindow(strip, w)) return;
     reveal(strip, prev);
     layoutAll(w);
 }
-
 // ---------------------------------------------------------------- Commands
-function currentStrip() {
+function currentContainer() {
     var aw = workspace.activeWindow, s = aw ? stripOf(aw) : null;
-    if (s) { stripFocusWindow(s, aw); return s; }   // commands act on what is really focused
-    var out = workspace.activeScreen;
-    if (out && tilingOutput(out.name)) return getStrip(out.name, workspace.currentDesktop.id, true);
-    var names = tilingOutputNames();
-    return names.length ? getStrip(names[0], workspace.currentDesktop.id, true) : null;
+    if (s) { containerFocusWindow(s, aw); return s; }   // commands act on what is really focused
+    var out = workspace.activeScreen, name = null;
+    if (out && tilingOutput(out.name)) name = out.name;
+    else { var names = tilingOutputNames(); if (names.length) name = names[0]; }
+    if (!name) return null;
+    var desk = workspace.currentDesktop.id;
+    return outputMode(name) === "regions" ? getZone(name, desk, true) : getStrip(name, desk, true);
 }
-
 // Mutate the model with fn(strip), then reveal the focused column and apply.
-function withStrip(fn, keepScroll) {
-    var strip = currentStrip();
-    if (!strip) return { ok: false, error: "no strip" };
-    var prev = strip.focusedColumn;
-    if (!fn(strip)) return { ok: true, changed: false };
-    if (!keepScroll) reveal(strip, prev);
-    layoutAll(stripFocusedWindow(strip));
+// Mutate the model with sfn(strip) (a strip) or zfn(zone) (a zone; commands that mean nothing
+// there leave it out), then apply. A strip also scrolls its focused column into view.
+function withCont(sfn, zfn, keepScroll) {
+    var c = currentContainer();
+    if (!c) return { ok: false, error: "no strip" };
+    if (c.kind === "zone") {
+        if (!zfn || !zfn(c)) return { ok: true, changed: false };
+        layoutAll(zoneFocusedWindow(c));
+        return { ok: true, changed: true };
+    }
+    var prev = c.focusedColumn;
+    if (!sfn(c)) return { ok: true, changed: false };
+    if (!keepScroll) reveal(c, prev);
+    layoutAll(stripFocusedWindow(c));
     return { ok: true, changed: true };
 }
 
+function withStrip(fn, keepScroll) { return withCont(fn, null, keepScroll); }
 function adoptWindow(w) {
     if (!w || stripOf(w)) return false;
     delete state.floating[wid(w)];
@@ -1072,7 +1451,7 @@ function releaseAll() {
         var w = list[i];
         if (state.scriptMin[wid(w)]) { delete state.scriptMin[wid(w)]; setMinimized(w, false); n++; }
     }
-    state.strips = {}; state.byWin = {};
+    state.strips = {}; state.zones = {}; state.byWin = {};
     sendReport(true);
     return n;
 }
@@ -1084,19 +1463,17 @@ function dirIsMain(strip, dir) {
 }
 
 function focusDir(dir) {
-    return withStrip(function (s) {
+    return withCont(function (s) {
         var d = dir === "left" || dir === "up" ? -1 : 1;
         return dirIsMain(s, dir) ? stripFocusColumn(s, d) : stripFocusRow(s, d);
-    });
+    }, function (z) { return zoneFocusDir(z, dir); });
 }
-
 function moveDir(dir) {
-    return withStrip(function (s) {
+    return withCont(function (s) {
         var d = dir === "left" || dir === "up" ? -1 : 1;
         return dirIsMain(s, dir) ? stripMoveColumn(s, d) : stripMoveRow(s, d);
-    });
+    }, function (z) { return zoneMoveDir(z, dir); });
 }
-
 var COMMANDS = {
     "focus-left": function () { return focusDir("left"); },
     "focus-right": function () { return focusDir("right"); },
@@ -1132,7 +1509,7 @@ var COMMANDS = {
         if (strip) {
             state.floating[wid(w)] = true;
             untile(w);
-            reveal(strip, strip.focusedColumn);
+            if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
             layoutAll(w);   // floating a window must not move the focus
             return { ok: true, floating: true };
         }
@@ -1147,12 +1524,37 @@ var COMMANDS = {
         return { ok: true, adopted: n };
     },
     "focus-column": function (arg) {
-        return withStrip(function (s) {
+        return withCont(function (s) {
             var n = clamp(Number(arg) | 0, 0, s.columns.length - 1);
             if (!s.columns.length || n === s.focusedColumn) return false;
             s.focusedColumn = n;
             return true;
+        }, function (z) {
+            // a slot: focus its window; an empty slot becomes where the next new window goes
+            var n = clamp(Number(arg) | 0, 0, z.slots.length - 1);
+            if (n === z.focusedSlot) return false;
+            z.focusedSlot = n;
+            return z.slots[n].windows.length > 0;
         });
+    },
+    // regions mode: the focused window goes to slot N (1-based), bottom of its stack
+    "send-to-slot": function (arg) {
+        return withCont(function () { return false; }, function (z) {
+            return zoneMoveToSlot(z, (Number(arg) | 0) - 1);
+        });
+    },
+    // flip an output between scrolling columns and fixed regions (arg: output name, else the focused one)
+    "toggle-mode": function (arg) {
+        var name = arg ? String(arg) : null;
+        if (!name) {
+            var c = currentContainer();
+            name = c ? c.outputName : null;
+        }
+        if (!name || !outputByName(name) || !tilingOutput(name)) return { ok: false, error: "no tiling output" };
+        state.modeFlip[name] = outputMode(name) === "regions" ? "strip" : "regions";
+        migrateModes();
+        layoutAll(null);
+        return { ok: true, mode: state.modeFlip[name] };
     },
     "config": function (arg) { return { ok: applyConfig(arg) }; },
     "relayout": function () { layoutAll(null); return { ok: true }; },
@@ -1198,7 +1600,14 @@ var SHORTCUTS = [
     { text: "Cycle column width", key: "Meta+Alt+R", cmd: "cycle-width" },
     { text: "Maximize column", key: "Meta+Alt+F", cmd: "maximize-column" },
     { text: "Center column", key: "Meta+Alt+C", cmd: "center-column" },
-    { text: "Toggle floating", key: "Meta+Alt+V", cmd: "float-toggle" }
+    { text: "Toggle floating", key: "Meta+Alt+V", cmd: "float-toggle" },
+    { text: "Switch this monitor between scrolling and fixed regions", key: "Meta+Alt+G", cmd: "toggle-mode" },
+    { text: "Send window to region 1", key: "Meta+Alt+1", cmd: "send-to-slot", arg: 1 },
+    { text: "Send window to region 2", key: "Meta+Alt+2", cmd: "send-to-slot", arg: 2 },
+    { text: "Send window to region 3", key: "Meta+Alt+3", cmd: "send-to-slot", arg: 3 },
+    { text: "Send window to region 4", key: "Meta+Alt+4", cmd: "send-to-slot", arg: 4 },
+    { text: "Send window to region 5", key: "Meta+Alt+5", cmd: "send-to-slot", arg: 5 },
+    { text: "Send window to region 6", key: "Meta+Alt+6", cmd: "send-to-slot", arg: 6 }
 ];
 
 // ---------------------------------------------------------------- Config from the bridge
@@ -1239,6 +1648,9 @@ function applyConfig(c) {
     }
     if (typeof c.portraitDockStrip === "number" && c.portraitDockStrip >= 0 && c.portraitDockStrip <= 200)
         cfg.portraitDockStrip = Math.round(c.portraitDockStrip);
+    var ro = strList(c.regionOutputs, 8, 64);
+    if (ro) cfg.regionOutputs = ro;
+    if (c.regionsNewWindow === "smart" || c.regionsNewWindow === "focused") cfg.regionsNewWindow = c.regionsNewWindow;
     if (typeof c.portraitVertical === "boolean") cfg.portraitVertical = c.portraitVertical;
     if (typeof c.centerSingle === "boolean") cfg.centerSingle = c.centerSingle;
     if (typeof c.expandSingle === "boolean") cfg.expandSingle = c.expandSingle;
@@ -1255,6 +1667,7 @@ function applyConfig(c) {
 
 // Config changed: drop windows that no longer belong (output or class lists), adopt new ones.
 function reconcile() {
+    migrateModes();
     var list = workspace.windowList();
     for (var i = 0; i < list.length; i++) {
         var w = list[i], s = stripOf(w);
@@ -1294,9 +1707,27 @@ function buildReport() {
                         visible: ws.length ? vis[ws[0].id] === true : false, windows: ws });
         }
         rep.outputs[strip.outputName] = {
-            desktop: strip.desktopId, focusedColumn: strip.focusedColumn, vertical: strip.vertical === true,
+            desktop: strip.desktopId, focusedColumn: strip.focusedColumn, vertical: strip.vertical === true, mode: "strip",
             scroll: Math.round(clamp(strip.scrollX / span, 0, 1) * 1000) / 1000, columns: cols
         };
+    }
+    for (var zk in state.zones) {
+        var zone = state.zones[zk];
+        if (zone.desktopId !== cur.id) continue;
+        var zvis = {}, zlay = zone.lastLayout || [];
+        for (var zi = 0; zi < zlay.length; zi++) zvis[wid(zlay[zi].window)] = zlay[zi].visible;
+        var scols = [];
+        for (var si = 0; si < zone.slots.length; si++) {
+            var slot = zone.slots[si], zws = [];
+            for (var wi = 0; wi < slot.windows.length; wi++) {
+                var zw = slot.windows[wi];
+                zws.push({ id: wid(zw), app: String(zw.resourceClass || "").slice(0, 64),
+                           focused: si === zone.focusedSlot && wi === slot.focused });
+            }
+            scols.push({ width: Math.round(slot.rect.w * 1000) / 1000, visible: zws.length > 0, windows: zws });   // empty slots show dim
+        }
+        rep.outputs[zone.outputName] = { desktop: zone.desktopId, focusedColumn: zone.focusedSlot, vertical: false,
+                                         mode: "regions", scroll: 0, columns: scols };
     }
     return rep;
 }
@@ -1346,6 +1777,18 @@ function init() {
     previewTimer.interval = 40;
     previewTimer.timeout.connect(guard("previewTimer", function () { previewArmed = false; previewResize(); }));
 
+    regionsTimer = new QTimer();
+    regionsTimer.singleShot = false;
+    regionsTimer.interval = 1500;
+    regionsTimer.timeout.connect(guard("regionsTimer", function () {
+        if (state.released || !state.started || state.applying) return;
+        for (var k in state.zones) {
+            var z = state.zones[k], out = outputByName(z.outputName), desk = desktopById(z.desktopId);
+            if (out && desk && JSON.stringify(readRegions(out, desk)) !== z.sig) { layoutAll(null); return; }
+        }
+    }));
+    regionsTimer.start();
+
     geomTimer = new QTimer();
     geomTimer.singleShot = true;
     geomTimer.interval = 250;
@@ -1385,12 +1828,12 @@ function begin() {
     for (var i = 0; i < list.length; i++)
         if (!list[i].minimized) tile(list[i]);
     var aw = workspace.activeWindow, as = aw ? stripOf(aw) : null;
-    if (as) { stripFocusWindow(as, aw); reveal(as, as.focusedColumn); }
+    if (as) { containerFocusWindow(as, aw); if (as.kind !== "zone") reveal(as, as.focusedColumn); }
 
     if (cfg.shortcuts) {
         SHORTCUTS.forEach(function (sc) {
             registerShortcut(cfg.shortcutPrefix + sc.text, cfg.shortcutPrefix + sc.text, sc.key,
-                             guard("shortcut " + sc.cmd, function () { runCommand(sc.cmd); }));
+                             guard("shortcut " + sc.cmd, function () { runCommand(sc.cmd, sc.arg); }));
         });
     }
     layoutAll(null);
