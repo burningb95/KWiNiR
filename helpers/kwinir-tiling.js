@@ -743,9 +743,14 @@ function wireWindow(w) {
         reveal(strip, prev);
         layoutAll(w);
     }));
+    w.tileChanged.connect(guard("tileChanged", function () {
+        if (!w.tile || state.released || !state.started || !stripOf(w)) return;
+        quickTilePressed(w);
+    }));
     w.interactiveMoveResizeStarted.connect(guard("moveStarted", function () {
         var g = w.frameGeometry, strip = stripOf(w);
         var rec = { start: { x: g.x, y: g.y, width: g.width, height: g.height }, resizing: w.resize === true,
+                    body: dragStartedInBody(w),
                     strip: strip, at: null, area: null, entries: null, cur: null };
         if (strip) {
             rec.at = stripFind(strip, w);
@@ -815,6 +820,76 @@ function cloneStrip(strip) {
     return cp;
 }
 
+// A drag that began inside the window (not on its title bar) is a modifier drag: Meta+left
+// button, or whatever KWin's Window Actions are set to. Server-decorated windows have a known
+// title bar (client area starts below it); client-decorated ones are assumed to have a header
+// bar of up to 48 px. A keyboard-started move warps the pointer to the centre: also "body".
+function dragStartedInBody(w) {
+    var p = workspace.cursorPos, f = w.frameGeometry, c = w.clientGeometry;
+    if (!p || !c || p.x < f.x || p.x > f.x + f.width || p.y < f.y || p.y > f.y + f.height) return false;
+    var deco = c.y - f.y, head = deco > 1 ? deco + 6 : 48;
+    return p.y - f.y >= head;
+}
+
+// The monitor next to `fromName` in a direction ("left"|"right"|"up"|"down"), among the
+// monitors that tile; null when there is none. Neighbours must overlap along the other axis.
+function neighbourOutput(fromName, dir) {
+    var from = outputByName(fromName), best = null, bestGap = 1e9;
+    if (!from) return null;
+    var a = from.geometry, names = tilingOutputNames();
+    for (var i = 0; i < names.length; i++) {
+        var o = outputByName(names[i]);
+        if (!o || o.name === fromName) continue;
+        var b = o.geometry, gap;
+        if (dir === "left" || dir === "right") {
+            if (b.y >= a.y + a.height || b.y + b.height <= a.y) continue;
+            gap = dir === "left" ? a.x - (b.x + b.width) : b.x - (a.x + a.width);
+        } else {
+            if (b.x >= a.x + a.width || b.x + b.width <= a.x) continue;
+            gap = dir === "up" ? a.y - (b.y + b.height) : b.y - (a.y + a.height);
+        }
+        if (gap >= -2 && gap < bestGap) { best = o.name; bestGap = gap; }
+    }
+    return best;
+}
+
+// Takes `w` out of its strip and drops it into `target` as its own column at idx.
+function moveToStrip(w, target, idx, frac) {
+    var i = wid(w), old = untile(w);
+    if (old) reveal(old, old.focusedColumn);
+    var at = stripInsertColumn(target, w, idx, frac);
+    state.byWin[i] = target.key;
+    forgetRects(target);
+    reveal(target, at);
+    layoutAll(w);
+}
+
+// KWin's quick-tile keys (Meta+arrows) snap a window to half the screen, which fights the strip
+// (it used to jump there and be put back, or hop monitors). On a tiled window they now mean
+// "move this way": along the strip / within the stack, and past the end onto the next monitor.
+function quickTilePressed(w) {
+    var strip = stripOf(w), t = w.tile, o = w.output;
+    if (!strip || !o) return;
+    var a = t.absoluteGeometry, g = o.geometry, dir = null;
+    var rw = a.width / g.width, rh = a.height / g.height;
+    var cx = (a.x + a.width / 2 - g.x) / g.width, cy = (a.y + a.height / 2 - g.y) / g.height;
+    if (rw < 0.75 && (rh >= 0.75 || Math.abs(cx - 0.5) >= Math.abs(cy - 0.5))) dir = cx < 0.5 ? "left" : "right";
+    else if (rh < 0.75) dir = cy < 0.5 ? "up" : "down";
+    w.tile = null;           // KWin puts the frame back where it was
+    if (!dir) { forgetRects(strip); layoutAll(w); return; }
+    stripFocusWindow(strip, w);
+    var d = dir === "left" || dir === "up" ? -1 : 1, prev = strip.focusedColumn;
+    var moved = dirIsMain(strip, dir) ? stripMoveColumn(strip, d) : stripMoveRow(strip, d);
+    if (moved) { reveal(strip, prev); forgetRects(strip); layoutAll(w); return; }
+    var hop = neighbourOutput(strip.outputName, dir);
+    if (!hop || !w.desktops || w.desktops.length !== 1) { forgetRects(strip); layoutAll(w); return; }
+    var at = stripFind(strip, w), solo = at && strip.columns[at.c].windows.length === 1;
+    var frac = solo ? strip.columns[at.c].frac : cfg.defaultWidth;
+    var target = getStrip(hop, w.desktops[0].id, true);
+    // it arrives at the edge it came in from: past the end going left/up, at the start going right/down
+    moveToStrip(w, target, d < 0 ? target.columns.length : 0, frac);
+}
+
 // While a border is dragged, the neighbour it pushes against follows live (the dragged window
 // is KWin's to move). Nothing is hidden or minimized until the drag ends.
 function previewResize() {
@@ -856,29 +931,32 @@ function finishResize(w, strip, rec, cur) {
 }
 
 // A dragged tiled window re-enters the strip where it was dropped: on the monitor it ended up
-// on, in the slot its centre falls in. Dropped on a monitor that does not tile, it floats there.
+// on, in the slot its centre falls in. Two things float it instead: a drag that began inside the
+// window rather than on its title bar (Meta/Alt + left button), and a drop on a monitor that
+// does not tile (it stays where it was dropped).
 function finishMove(w, strip, rec, cur) {
     var i = wid(w), travelled = Math.abs(cur.x - rec.start.x) + Math.abs(cur.y - rec.start.y);
-    if (travelled < 6) { forgetRects(strip); layoutAll(w); return; }
     var out = w.output;
-    if (!out || !tilingOutput(out.name) || !w.desktops || w.desktops.length !== 1) {
+    var tileable = out && tilingOutput(out.name) && w.desktops && w.desktops.length === 1;
+    if (rec.body || (travelled >= 6 && !tileable)) {
         state.floating[i] = true;
         untile(w);
         reveal(strip, strip.focusedColumn);
         layoutAll(w);
         return;
     }
+    if (travelled < 6 || !tileable) { forgetRects(strip); layoutAll(w); return; }
     var at = stripFind(strip, w), solo = at && strip.columns[at.c].windows.length === 1;
     var frac = solo ? strip.columns[at.c].frac : cfg.defaultWidth;
+    var target = getStrip(out.name, w.desktops[0].id, true), area = workArea(target);
+    if (!area) { forgetRects(strip); layoutAll(w); return; }
     untile(w);
     reveal(strip, strip.focusedColumn);
-    var target = getStrip(out.name, w.desktops[0].id, true), area = workArea(target);
-    if (!area) { layoutAll(w); return; }
     var centre = target.vertical ? cur.y + cur.height / 2 - area.y : cur.x + cur.width / 2 - area.x;
-    var idx = stripInsertColumn(target, w, dropIndex(target, area, cfg, centre), frac);
+    var at2 = stripInsertColumn(target, w, dropIndex(target, area, cfg, centre), frac);
     state.byWin[i] = target.key;
     forgetRects(target);
-    reveal(target, idx);
+    reveal(target, at2);
     layoutAll(w);
 }
 
