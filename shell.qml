@@ -266,7 +266,7 @@ ShellRoot {
      */
     IpcHandler {
         target: "tiling"
-        function toggle(): string { return setEnabled(!(Config.options?.tiling?.enable ?? false)) }
+        function toggle(): string { return setEnabled(!(Config.options?.tiling?.enable ?? true)) }
         function enable(): string { return setEnabled(true) }
         function disable(): string { return setEnabled(false) }
         function setEnabled(on: bool): string {
@@ -275,7 +275,7 @@ ShellRoot {
         }
         function status(): string {
             const t = KWinBridge.tiling
-            if (!(Config.options?.tiling?.enable ?? false))
+            if (!(Config.options?.tiling?.enable ?? true))
                 return "off"
             if (!t?.enabled)
                 return "starting"

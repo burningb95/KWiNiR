@@ -422,8 +422,16 @@ def clean_tiling_config(c):
         out["presetWidths"] = [float(x) for x in presets]
     if c.get("center") in ("never", "on-overflow", "always"):
         out["center"] = c["center"]
-    if _is_num(c.get("bottomMargin"), 0, 400):
-        out["bottomMargin"] = int(c["bottomMargin"])
+    struts = c.get("struts")
+    if isinstance(struts, dict):
+        clean = {k: int(struts[k]) for k in ("left", "right", "top", "bottom") if _is_num(struts.get(k), 0, 512)}
+        if clean:
+            out["struts"] = clean
+    if _is_num(c.get("portraitDockStrip"), 0, 200):
+        out["portraitDockStrip"] = int(c["portraitDockStrip"])
+    for key in ("portraitVertical", "centerSingle", "expandSingle"):
+        if isinstance(c.get(key), bool):
+            out[key] = c[key]
     outputs = _str_list(c.get("outputs"), 8, 64, re.compile(r"^[A-Za-z0-9@._:-]+$"))
     if outputs:
         out["outputs"] = outputs
@@ -484,7 +492,7 @@ def clean_tiling_report(e):
                 out_wins.append({"id": w["id"], "app": w["app"], "focused": w["focused"]})
             out_cols.append({"width": float(col["width"]), "visible": col["visible"], "windows": out_wins})
         outputs[name] = {"desktop": o["desktop"], "focusedColumn": int(o["focusedColumn"]),
-                         "scroll": float(o["scroll"]), "columns": out_cols}
+                         "scroll": float(o["scroll"]), "vertical": o.get("vertical") is True, "columns": out_cols}
     return {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
 
 

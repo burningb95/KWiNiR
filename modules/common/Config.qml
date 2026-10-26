@@ -1326,17 +1326,29 @@ Singleton {
             }
 
             // KWin port: niri-style scrolling tiling (helpers/kwinir-tiling.js, loaded by the KWin
-            // bridge). Off by default: enabling it tiles the windows already open.
+            // bridge). On by default: enabling it tiles the windows already open.
             property JsonObject tiling: JsonObject {
-                property bool enable: false
+                property bool enable: true
                 // Output names that tile; "@primary" = KWin's priority-1 output, "@all" = every monitor
                 // (both survive cable swaps).
-                property list<string> outputs: ["@primary"]
+                property list<string> outputs: ["@all"]
                 property int gap: 12                      // px, between windows and around the strip
                 property real defaultWidth: 0.5           // width of a new column (fraction of the screen)
                 property list<real> presetWidths: [0.3333, 0.5, 0.6667]   // cycle-width steps
                 property string center: "on-overflow"     // never | on-overflow | always
-                property int bottomMargin: 0              // px kept clear at the bottom of a tiling output (Latte)
+                // niri's "struts": px kept clear on each edge of every tiling monitor.
+                property JsonObject struts: JsonObject {
+                    property int left: 0
+                    property int right: 0
+                    property int top: 0
+                    property int bottom: 0
+                }
+                // Portrait monitors scroll top to bottom (rows) instead of left to right (columns).
+                property bool portraitVertical: true
+                // Extra px kept clear at the bottom of portrait monitors: room for a dock's hover strip.
+                property int portraitDockStrip: 8
+                property bool centerSingle: false         // a lone column sits in the middle
+                property bool expandSingle: false         // a lone column fills the working area
                 // Empty = tile every tileable window; otherwise only these window classes.
                 property list<string> onlyClasses: []
                 // Window classes that never tile (a trailing * matches a prefix).

@@ -41,10 +41,10 @@ Singleton {
     signal overviewPolled(bool open)
 
     // KWin port: scrolling tiling. `tiling` is the helper's last (validated) report:
-    // {enabled, outputs: {<name>: {desktop, focusedColumn, scroll, columns: [{width, visible,
+    // {enabled, outputs: {<name>: {desktop, focusedColumn, scroll, vertical, columns: [{width, visible,
     // windows: [{id, app, focused}]}]}}}. Toggling tiling.enable restarts the helper, which
     // releases every window the script minimized before it unloads the script.
-    readonly property bool tilingEnabled: root.enabled && (Config.options?.tiling?.enable ?? false)
+    readonly property bool tilingEnabled: root.enabled && (Config.options?.tiling?.enable ?? true)
     property var tiling: ({ enabled: false, outputs: ({}) })
     readonly property var tilingConfig: {
         const t = Config.options?.tiling
@@ -53,7 +53,12 @@ Singleton {
             defaultWidth: t?.defaultWidth ?? 0.5,
             presetWidths: Array.from(t?.presetWidths ?? [0.3333, 0.5, 0.6667]),
             center: t?.center ?? "on-overflow",
-            bottomMargin: t?.bottomMargin ?? 0,
+            struts: ({ left: t?.struts?.left ?? 0, right: t?.struts?.right ?? 0,
+                       top: t?.struts?.top ?? 0, bottom: t?.struts?.bottom ?? 0 }),
+            portraitVertical: t?.portraitVertical ?? true,
+            portraitDockStrip: t?.portraitDockStrip ?? 8,
+            centerSingle: t?.centerSingle ?? false,
+            expandSingle: t?.expandSingle ?? false,
             outputs: Array.from(t?.outputs ?? ["@primary"]),
             onlyClasses: Array.from(t?.onlyClasses ?? []),
             floatClasses: Array.from(t?.floatClasses ?? []),
