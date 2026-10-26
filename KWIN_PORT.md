@@ -604,6 +604,21 @@ output mode = `tiling.regionOutputs` unless `toggle-mode` (Meta+Alt+G) flipped i
 tile: see above. Same-app *cycling* (several windows of one app sharing one slot,
 one shown) was asked for and then dropped: same-app windows stack. Verified by the fake-KWin
 tests; the live check is below.
+*Meta+arrow keys (round 5):* intercepting KDE's quick tile (tile set, cleared, frame restored, then
+our own write) bounced windows around and, on a full-width window, hopped it straight to the next
+monitor. With `--quicktile` (`tiling.takeOverQuickTile`, default on) the bridge now **releases
+KDE's four "Window Quick Tile Left/Right/Top/Bottom" bindings** through
+`org.kde.KGlobalAccel.setShortcut(..., [], 4)` before it loads the script, saving the originals to
+`~/.local/state/pillbar/released-quicktile.json` first, and the tiler registers its own
+`Snap left/right/up/down` on Meta+arrows. They are given back on every exit path (and swept on the
+next start if the bar died); `REVERT-tiling-quicktile.sh` (project dir) does it by hand and
+`tiling-rescue.sh` calls it. `directionalMove`: a column that can move that way moves; at the end of
+the strip a wide column is cut to the default width and the strip is packed flush with that edge
+(`strip.align`, honoured by `layoutAll` while everything fits) — KDE's "tile to the right half"; snapped
+already, it hops to the next monitor that way and arrives at the edge it came from. Up/Down on a
+landscape strip with nothing to reorder maximize / restore the column. A window the tiler does not
+manage gets KDE's own quick tile back through `Component.invokeShortcut` by name. The old interception
+stays as the fallback when the keys are not taken over.
 *Modifier drag floats:* a move that starts inside the window rather than on its title bar
 (`workspace.cursorPos` vs `clientGeometry`; KWin exposes no keyboard-modifier API) floats the
 window; resizes never float. *Quick tile:* KWin's Meta+arrow keys set `window.tile`; on a tiled

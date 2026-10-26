@@ -444,6 +444,15 @@ ContentPage {
         title: Translation.tr("Keys")
 
         SettingsGroup {
+            ConfigSwitch {
+                Layout.fillWidth: true
+                buttonIcon: "keyboard_arrow_right"
+                text: Translation.tr("Meta + arrow keys snap and move tiled windows")
+                checked: Config.options?.tiling?.takeOverQuickTile ?? true
+                onCheckedChanged: Config.setNestedValue("tiling.takeOverQuickTile", checked)
+                StyledToolTip { text: Translation.tr("While tiling runs, KDE's quick-tile keys (Meta + arrows) are released and used by the tiler; they are given back when tiling stops or this is switched off. Floating windows still get KDE's quick tile. REVERT-tiling-quicktile.sh in ~/.local/share/Fancy-Floating-Bar restores them if the bar ever dies mid-run.") }
+            }
+
             ContentSubsection {
                 title: Translation.tr("Tiling shortcuts (only while tiling is on)")
                 Repeater {
@@ -457,6 +466,8 @@ ContentPage {
                         { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
                         { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
+                        { keys: "Meta + ← →", what: Translation.tr("Move the window that way; at the end of the strip snap it to the monitor's edge (a full-width window becomes half width), then hop to the next monitor") },
+                        { keys: "Meta + ↑ ↓", what: Translation.tr("Move within a stack; otherwise maximize / restore the column") },
                         { keys: "Meta+Alt+G", what: Translation.tr("Switch this monitor between scrolling columns and fixed regions") },
                         { keys: "Meta+Alt+1 … 6", what: Translation.tr("Regions mode: send the window to region 1 … 6") }
                     ]

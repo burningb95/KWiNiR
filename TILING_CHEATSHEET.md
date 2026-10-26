@@ -55,10 +55,11 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 
 | Keys | Does on a tiled window |
 |---|---|
-| `Meta+←/→/↑/↓` (KDE quick tile) | **moves the window** like `Meta+Alt+Shift+H/L/K/J` instead of snapping it to half the screen. At the end of the strip it hops to the monitor in that direction and arrives at the edge it came in from. Nothing in that direction: stays put |
+| `Meta+←/→` | **moves the window** that way (like `Meta+Alt+Shift+H/L`). At the end of the strip the window first **snaps to that edge of the monitor** (a full-width window becomes half width, flush against the edge, like KDE's "tile to the right half"); pressed again it **hops to the next monitor** that way and arrives at the edge it came in from. Nothing that way: stays put |
+| `Meta+↑/↓` | moves the window up / down inside its stack; with nothing to reorder, `↑` maximizes the column and `↓` restores it (on a portrait monitor they work like `←/→` do on a landscape one) |
 | `Meta+Shift+←/→` (move to previous / next screen) | KWin sends the window to that monitor and the tiler slots it in next to that monitor's focused column |
 
-On a floating window, or one on a monitor that doesn't tile, these behave as KDE normally does.
+While tiling runs the tiler **owns the four Meta+arrow keys**: it releases KDE's quick-tile bindings at start and gives them back when tiling stops (Settings › Tiling › Keys has a switch). On a floating window, or one on a monitor that doesn't tile, Meta+arrows still do KDE's quick tile. If the bar ever dies mid-run and the keys stay released: `sh ~/.local/share/Fancy-Floating-Bar/REVERT-tiling-quicktile.sh`.
 
 ### Regions mode only
 
