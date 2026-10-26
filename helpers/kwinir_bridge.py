@@ -26,11 +26,22 @@ stdout events: {"type":"ready"}  {"type":"fullscreen","value":bool}
                {"type":"capture","value":bool}  (Spectacle region selector up)
                {"type":"jobs","count":int}
                {"type":"output","value":str}  {"type":"overview","value":bool}
+               {"type":"tiling","v":1,"enabled":bool,"outputs":{...}}  (with --tiling)
+
+# KWin port: with --tiling the helper also loads helpers/kwinir-tiling.js (scrolling tiling,
+  docs/TILING_PLAN.md). KWin scripts can't export D-Bus methods, so the script long-polls
+  org.kwinir.Bridge.NextCommand; the helper answers with a "noop" heartbeat every 12 s (a held
+  call dies silently at ~25 s). Commands and config come from the bar on stdin, one JSON
+  object per line, and are validated here against a whitelist before they reach KWin:
+    {"type":"tiling-config","config":{...}}   {"type":"tiling-command","name":str,"arg":..}
+  On exit the helper asks the script to release every window it minimized and waits up to 1 s
+  before unloading it, then unregisters the script's "KWiNiR Tiling: " global shortcuts.
 """
 
 import ctypes
 import json
 import os
+import re  # KWin port: tiling input validation
 import signal
 import sys
 import time
@@ -62,6 +73,20 @@ def register_object(bus, path, iface, method_cb):
 HERE = os.path.dirname(os.path.abspath(__file__))
 FULLSCREEN_SCRIPT = os.path.join(HERE, "kwinir-fullscreen.js")
 SCRIPT_NAME = "kwinir-fullscreen"
+# KWin port: scrolling tiling script (loaded only with --tiling)
+TILING_SCRIPT = os.path.join(HERE, "kwinir-tiling.js")
+TILING_NAME = "kwinir-tiling"
+TILING_PREFIX = "KWiNiR Tiling: "
+POLL_HEARTBEAT_MS = 12000   # a held NextCommand call dies silently at ~25 s
+RELEASE_WAIT_MS = 1000      # how long quit() waits for the script to un-minimize everything
+# Commands the bar may send. dump/windows/config/release-all are internal or debug only.
+TILING_COMMANDS = {
+    "focus-left", "focus-right", "focus-up", "focus-down", "move-column-left", "move-column-right",
+    "move-window-up", "move-window-down", "consume-left", "consume-right", "expel",
+    "consume-or-expel-left", "consume-or-expel-right", "cycle-width", "maximize-column",
+    "center-column", "float-toggle", "relayout", "adopt", "focus-column",
+}
+CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
 
 SHOW_DELAY_MS = 1000       # quick jobs never flash a notification (KIO itself waits 500 ms)
 UPDATE_INTERVAL_MS = 500   # at most two notification updates per second per job
@@ -72,6 +97,8 @@ BRIDGE_XML = """
 <node>
   <interface name="org.kwinir.Bridge">
     <method name="Event"><arg name="json" type="s" direction="in"/></method>
+    <method name="NextCommand"><arg name="json" type="s" direction="out"/></method>
+    <method name="Ack"><arg name="json" type="s" direction="in"/></method>
   </interface>
 </node>"""
 
@@ -361,8 +388,108 @@ class Job:
             self.bridge.bus.emit_signal(None, self.path, iface, signal_name, None)
 
 
+# -- KWin port: tiling input validation ----------------------------------------------
+# Everything that crosses from the KWin script to the bar, or from the bar to the script, is
+# rebuilt from checked fields; nothing is passed through as received.
+def _is_num(v, lo, hi):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def _str_list(v, max_items, max_len, pattern=None):
+    if not isinstance(v, list) or len(v) > max_items:
+        return None
+    out = []
+    for item in v:
+        if not isinstance(item, str) or not (1 <= len(item) <= max_len):
+            return None
+        if pattern is not None and not pattern.match(item):
+            return None
+        out.append(item)
+    return out
+
+
+def clean_tiling_config(c):
+    """Config from the bar -> the fields the script accepts (bad fields are dropped)."""
+    if not isinstance(c, dict):
+        return None
+    out = {}
+    if _is_num(c.get("gap"), 0, 100):
+        out["gap"] = int(c["gap"])
+    if _is_num(c.get("defaultWidth"), 0.1, 1):
+        out["defaultWidth"] = float(c["defaultWidth"])
+    presets = c.get("presetWidths")
+    if isinstance(presets, list) and 1 <= len(presets) <= 8 and all(_is_num(x, 0.1, 1) for x in presets):
+        out["presetWidths"] = [float(x) for x in presets]
+    if c.get("center") in ("never", "on-overflow", "always"):
+        out["center"] = c["center"]
+    if _is_num(c.get("bottomMargin"), 0, 400):
+        out["bottomMargin"] = int(c["bottomMargin"])
+    outputs = _str_list(c.get("outputs"), 8, 64, re.compile(r"^[A-Za-z0-9@._:-]+$"))
+    if outputs:
+        out["outputs"] = outputs
+    for key in ("onlyClasses", "floatClasses"):
+        lst = _str_list(c.get(key), 200, 100, CLASS_RE)
+        if lst is not None:
+            out[key] = lst
+    if isinstance(c.get("shortcuts"), bool):
+        out["shortcuts"] = c["shortcuts"]
+    return out
+
+
+def clean_tiling_command(msg):
+    """{name, arg} from the bar -> (name, arg) or None when it is not allowed."""
+    name = msg.get("name")
+    if name not in TILING_COMMANDS:
+        return None
+    arg = msg.get("arg")
+    if name == "focus-column":
+        if isinstance(arg, str) and arg.isdigit():
+            arg = int(arg)
+        return (name, arg) if isinstance(arg, int) and not isinstance(arg, bool) and 0 <= arg < 64 else None
+    if name == "adopt":
+        if arg in (None, ""):
+            return (name, None)
+        return (name, arg) if isinstance(arg, str) and CLASS_RE.match(arg) else None
+    return (name, None)
+
+
+def clean_tiling_report(e):
+    """Report from the KWin script -> the object the bar sees (schema v1, no titles)."""
+    if not isinstance(e, dict) or e.get("v") != 1 or not isinstance(e.get("enabled"), bool):
+        return None
+    outputs = {}
+    raw = e.get("outputs")
+    if not isinstance(raw, dict) or len(raw) > 8:
+        return None
+    for name, o in raw.items():
+        if not isinstance(name, str) or not (1 <= len(name) <= 64) or not isinstance(o, dict):
+            return None
+        cols = o.get("columns")
+        if not isinstance(cols, list) or len(cols) > 128 or not isinstance(o.get("desktop"), str) \
+                or len(o["desktop"]) > 64 or not _is_num(o.get("scroll"), 0, 1) \
+                or not _is_num(o.get("focusedColumn"), 0, 255):
+            return None
+        out_cols = []
+        for col in cols:
+            wins = col.get("windows") if isinstance(col, dict) else None
+            if not isinstance(wins, list) or len(wins) > 32 or not _is_num(col.get("width"), 0, 1) \
+                    or not isinstance(col.get("visible"), bool):
+                return None
+            out_wins = []
+            for w in wins:
+                if not isinstance(w, dict) or not isinstance(w.get("id"), str) or len(w["id"]) > 64 \
+                        or not isinstance(w.get("app"), str) or len(w["app"]) > 64 \
+                        or not isinstance(w.get("focused"), bool):
+                    return None
+                out_wins.append({"id": w["id"], "app": w["app"], "focused": w["focused"]})
+            out_cols.append({"width": float(col["width"]), "visible": col["visible"], "windows": out_wins})
+        outputs[name] = {"desktop": o["desktop"], "focusedColumn": int(o["focusedColumn"]),
+                         "scroll": float(o["scroll"]), "columns": out_cols}
+    return {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
+
+
 class Bridge:
-    def __init__(self, jobs_enabled):
+    def __init__(self, jobs_enabled, tiling_enabled=False):
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.loop = GLib.MainLoop()
         self.jobs_enabled = jobs_enabled
@@ -373,6 +500,17 @@ class Bridge:
         self.bridge_name_owned = False
         self.kwin_present = False
         self.script_loaded = False
+        # KWin port: tiling
+        self.tiling = tiling_enabled
+        self.tiling_loaded = False
+        self.tiling_config = None   # last validated config from the bar
+        self.config_sent = False    # per script load: the first reply to NextCommand is `config`
+        self.cmd_queue = []
+        self.held_poll = None
+        self.next_cmd_id = 1
+        self.ack_waiters = {}       # command id -> callback
+        self.quitting = False
+        self.replaced = False       # another bridge took the name: the scripts are now its own
         self.last_output = None
         self.last_overview = None
         self.view_v3 = Gio.DBusNodeInfo.new_for_xml(VIEW_V3_XML).interfaces[0]
@@ -386,6 +524,9 @@ class Bridge:
         Gio.bus_watch_name_on_connection(self.bus, "org.kde.KWin", Gio.BusNameWatcherFlags.NONE,
                                          self._on_kwin_appeared, self._on_kwin_vanished)
         GLib.timeout_add(KWIN_STATE_INTERVAL_MS, self._poll_kwin_state)
+        GLib.timeout_add(POLL_HEARTBEAT_MS, self._poll_heartbeat)
+        if tiling_enabled:
+            self._watch_stdin()
 
         if jobs_enabled:
             server = Gio.DBusNodeInfo.new_for_xml(SERVER_XML)
@@ -412,6 +553,7 @@ class Bridge:
 
     def _on_bridge_name_lost(self, *_args):
         self.bridge_name_owned = False
+        self.replaced = True   # KWin port: the winner reloaded the scripts by name; don't unload them
         log("lost org.kwinir.Bridge (another bridge replaced this one)")
         self.quit()
 
@@ -425,8 +567,12 @@ class Bridge:
         if self.kwin_present:
             emit({"type": "fullscreen", "value": False})
             emit({"type": "capture", "value": False})
+            if self.tiling:
+                emit({"type": "tiling", "v": 1, "enabled": False, "outputs": {}})
         self.kwin_present = False
         self.script_loaded = False
+        self.tiling_loaded = False
+        self.held_poll = None
         self.last_output = None
         self.last_overview = None
 
@@ -465,17 +611,29 @@ class Bridge:
                                   GLib.VariantType(reply) if reply else None,
                                   Gio.DBusCallFlags.NONE, NOTIFY_TIMEOUT_MS, None)
 
+    def _load_one(self, path, name):
+        loaded = self._kwin("/Scripting", "org.kde.kwin.Scripting", "isScriptLoaded",
+                            (name,), "(s)", "(b)").unpack()[0]
+        if loaded:
+            self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", (name,), "(s)", "(b)")
+        script_id = self._kwin("/Scripting", "org.kde.kwin.Scripting", "loadScript",
+                               (path, name), "(ss)", "(i)").unpack()[0]
+        if script_id < 0:
+            log(f"KWin refused {name}")
+            return False
+        return True
+
     def load_script(self):
         try:
-            loaded = self._kwin("/Scripting", "org.kde.kwin.Scripting", "isScriptLoaded",
-                                (SCRIPT_NAME,), "(s)", "(b)").unpack()[0]
-            if loaded:
-                self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", (SCRIPT_NAME,), "(s)", "(b)")
-            script_id = self._kwin("/Scripting", "org.kde.kwin.Scripting", "loadScript",
-                                   (FULLSCREEN_SCRIPT, SCRIPT_NAME), "(ss)", "(i)").unpack()[0]
-            if script_id < 0:
-                log("KWin refused the fullscreen script")
+            if not self._load_one(FULLSCREEN_SCRIPT, SCRIPT_NAME):
                 return
+            # KWin port: the tiling script rides along when enabled; otherwise sweep up the
+            # global shortcuts a previous tiling run left behind (kglobalaccel keeps them).
+            if self.tiling:
+                self.config_sent = False
+                self.tiling_loaded = self._load_one(TILING_SCRIPT, TILING_NAME)
+            else:
+                self.unregister_tiling_shortcuts()
             # Not /Scripting/Script<id>.run: KWin numbers a new script by the current
             # script count, so after any unload the id can equal a live script's and
             # its D-Bus path is already taken — run() then hits that other script and
@@ -486,15 +644,122 @@ class Bridge:
             log(f"could not load the KWin script: {e.message}")
 
     def unload_script(self):
-        if not self.script_loaded:
+        if not self.script_loaded or self.replaced:
             return
-        try:
-            self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", (SCRIPT_NAME,), "(s)", "(b)")
-        except GLib.Error:
-            pass
+        for name in (SCRIPT_NAME, TILING_NAME):
+            try:
+                self._kwin("/Scripting", "org.kde.kwin.Scripting", "unloadScript", (name,), "(s)", "(b)")
+            except GLib.Error:
+                pass
         self.script_loaded = False
+        self.tiling_loaded = False
+
+    # -- KWin port: tiling ------------------------------------------------------
+    def unregister_tiling_shortcuts(self):
+        """kglobalaccel keeps a script's shortcuts after it unloads; remove ours."""
+        try:
+            names = self.bus.call_sync("org.kde.kglobalaccel", "/component/kwin",
+                                       "org.kde.kglobalaccel.Component", "shortcutNames", None,
+                                       GLib.VariantType("(as)"), Gio.DBusCallFlags.NONE,
+                                       NOTIFY_TIMEOUT_MS, None).unpack()[0]
+        except GLib.Error:
+            return
+        for name in names:
+            if name.startswith(TILING_PREFIX):
+                try:
+                    self.bus.call_sync("org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel",
+                                       "unregister", GLib.Variant("(ss)", ("kwin", name)),
+                                       GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE,
+                                       NOTIFY_TIMEOUT_MS, None)
+                except GLib.Error:
+                    pass
+
+    def _watch_stdin(self):
+        self.stdin = Gio.DataInputStream.new(Gio.UnixInputStream.new(0, False))
+        self._read_stdin()
+
+    def _read_stdin(self):
+        self.stdin.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_stdin_line)
+
+    def _on_stdin_line(self, stream, result):
+        try:
+            line, _length = stream.read_line_finish_utf8(result)
+        except GLib.Error:
+            line = None
+        if line is None:
+            return   # the bar closed stdin; PR_SET_PDEATHSIG ends us if it died
+        if len(line) <= 65536:
+            self._handle_bar_message(line)
+        self._read_stdin()
+
+    def _handle_bar_message(self, line):
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(msg, dict):
+            return
+        if msg.get("type") == "tiling-config":
+            cfg = clean_tiling_config(msg.get("config"))
+            if cfg is None:
+                return
+            self.tiling_config = cfg
+            if self.config_sent:   # script already running: push the change
+                self.cmd_queue = [c for c in self.cmd_queue if c["name"] != "config"]
+                self._enqueue("config", cfg)
+            else:
+                self._flush_poll()
+        elif msg.get("type") == "tiling-command":
+            cmd = clean_tiling_command(msg)
+            if cmd is not None and len(self.cmd_queue) < 32:
+                self._enqueue(*cmd)
+
+    def _enqueue(self, name, arg=None, on_ack=None):
+        cid = self.next_cmd_id
+        self.next_cmd_id += 1
+        if on_ack is not None:
+            self.ack_waiters[cid] = on_ack
+        self.cmd_queue.append({"id": cid, "type": "cmd", "name": name, "arg": arg})
+        self._flush_poll()
+
+    def _flush_poll(self):
+        if self.held_poll is None:
+            return
+        cmd = None
+        if not self.config_sent and self.tiling_config is not None:
+            cmd = {"id": 0, "type": "cmd", "name": "config", "arg": self.tiling_config}
+            self.config_sent = True
+        elif self.cmd_queue and (self.config_sent or self.quitting):
+            cmd = self.cmd_queue.pop(0)
+        if cmd is None:
+            return
+        inv, self.held_poll = self.held_poll, None
+        inv.return_value(GLib.Variant("(s)", (json.dumps(cmd),)))
+
+    def _poll_heartbeat(self):
+        if self.held_poll is not None:
+            inv, self.held_poll = self.held_poll, None
+            inv.return_value(GLib.Variant("(s)", (json.dumps({"type": "noop"}),)))
+        return GLib.SOURCE_CONTINUE
 
     def _on_bridge_call(self, conn, sender, path, iface, method, params, invocation):
+        if method == "NextCommand":
+            # KWin port: the tiling script's long-poll (see module docstring).
+            if self.held_poll is not None:   # a stale poll from a reloaded script
+                self._poll_heartbeat()
+            self.held_poll = invocation
+            self._flush_poll()
+            return
+        if method == "Ack":
+            try:
+                ack = json.loads(params.unpack()[0])
+                waiter = self.ack_waiters.pop(ack.get("id"), None) if isinstance(ack, dict) else None
+            except (ValueError, TypeError):
+                waiter = None
+            if waiter is not None:
+                waiter()
+            invocation.return_value(None)
+            return
         if method != "Event":
             invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod", method)
             return
@@ -505,6 +770,10 @@ class Bridge:
         # Only whitelisted events reach the bar, rebuilt from checked fields.
         if isinstance(event, dict) and event.get("type") in ("fullscreen", "capture") and isinstance(event.get("value"), bool):
             emit({"type": event["type"], "value": event["value"]})
+        elif isinstance(event, dict) and event.get("type") == "tiling" and self.tiling:
+            report = clean_tiling_report(event)
+            if report is not None:
+                emit(report)
         invocation.return_value(None)
 
     # -- job view server ------------------------------------------------------
@@ -641,10 +910,29 @@ class Bridge:
 
     # -- lifecycle ------------------------------------------------------------
     def quit(self):
+        if self.quitting:
+            return GLib.SOURCE_REMOVE
+        self.quitting = True
         for job in list(self.jobs.values()):
             if job.notif_id:
                 self.close_notification(job.notif_id)
+        # KWin port: have the tiling script give every window it minimized back before it is
+        # unloaded (it can't clean up after itself: scripts have no unload hook).
+        if self.tiling_loaded and self.kwin_present and not self.replaced:
+            self._enqueue("release-all", None, on_ack=self._finish_quit)
+            GLib.timeout_add(RELEASE_WAIT_MS, self._finish_quit)
+            return GLib.SOURCE_REMOVE
+        self._finish_quit()
+        return GLib.SOURCE_REMOVE
+
+    def _finish_quit(self):
+        if getattr(self, "_finished", False):
+            return GLib.SOURCE_REMOVE
+        self._finished = True
+        was_tiling = self.tiling_loaded
         self.unload_script()
+        if was_tiling and not self.replaced:
+            self.unregister_tiling_shortcuts()
         self.loop.quit()
         return GLib.SOURCE_REMOVE
 
@@ -655,7 +943,7 @@ def main():
         ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
     except OSError:
         pass
-    bridge = Bridge(jobs_enabled="--jobs" in sys.argv[1:])
+    bridge = Bridge(jobs_enabled="--jobs" in sys.argv[1:], tiling_enabled="--tiling" in sys.argv[1:])
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         unix_signal_add(GLib.PRIORITY_HIGH, signum, bridge.quit)
     bridge.loop.run()
