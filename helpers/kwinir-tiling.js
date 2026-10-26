@@ -187,8 +187,8 @@ function stripCycleWidth(strip, presets) {
     return true;
 }
 
-function stripToggleMaximize(strip) {
-    var col = strip.columns[strip.focusedColumn];
+function stripToggleMaximize(strip, colIndex) {
+    var col = strip.columns[colIndex === undefined ? strip.focusedColumn : colIndex];
     if (!col) return false;
     if (col.prevFrac === null) { col.prevFrac = col.frac; col.frac = 1; }
     else { col.frac = col.prevFrac; col.prevFrac = null; }
@@ -307,11 +307,17 @@ function guard(name, fn) {
     };
 }
 
-// cfg.outputs with "@primary" resolved to KWin's priority-1 output (screenOrder[0]).
+// cfg.outputs with "@primary" resolved to KWin's priority-1 output (screenOrder[0]) and "@all"
+// to every screen.
 function tilingOutputNames() {
     var out = [];
     for (var i = 0; i < cfg.outputs.length; i++) {
         var n = cfg.outputs[i];
+        if (n === "@all") {
+            for (var k = 0; k < workspace.screens.length; k++)
+                if (out.indexOf(workspace.screens[k].name) < 0) out.push(workspace.screens[k].name);
+            continue;
+        }
         if (n === "@primary") n = workspace.screenOrder && workspace.screenOrder.length ? workspace.screenOrder[0].name : "";
         if (n && out.indexOf(n) < 0) out.push(n);
     }
@@ -391,7 +397,7 @@ function untile(w) {
 function tile(w, outName) {
     if (state.released || !state.started || state.floating[wid(w)] || !isTileable(w)) return null;
     var out = outName || w.output.name;
-    if (!tilingOutput(out)) return null;
+    if (!tilingOutput(out) || !outputByName(out)) return null;
     var strip = getStrip(out, w.desktops[0].id, true);
     if (stripFind(strip, w)) return strip;
     var prev = strip.focusedColumn;
@@ -415,6 +421,9 @@ function writeGeometry(w, rect) {
     if (state.lastRect[id] === key && Math.abs(g.x - rect.x) < 2 && Math.abs(g.y - rect.y) < 2)
         return;
     state.lastRect[id] = key;
+    // A window born maximized (or maximized by the user) keeps KWin's maximize flag when we
+    // resize it, and KWin re-applies maximize geometry when the work area changes: clear it.
+    if (w.maximizeMode) w.setMaximize(false, false);
     w.frameGeometry = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
@@ -512,10 +521,43 @@ function retile(w) {
     if (s || wasKey) scheduleLayout();
 }
 
+// An output went away (monitor off / cable pulled) or stopped tiling: its windows join the
+// first tiling output that still exists; with none left they are released and float.
+function migrateStrips() {
+    if (!state.started || state.released) return;
+    var live = tilingOutputNames().filter(function (n) { return outputByName(n) !== null; });
+    var stale = [];
+    for (var key in state.strips) {
+        var strip = state.strips[key];
+        if (!outputByName(strip.outputName) || !tilingOutput(strip.outputName)) stale.push(strip);
+    }
+    for (var i = 0; i < stale.length; i++) {
+        var wins = [];
+        for (var c = 0; c < stale[i].columns.length; c++)
+            for (var r = 0; r < stale[i].columns[c].windows.length; r++)
+                wins.push(stale[i].columns[c].windows[r]);
+        for (var j = 0; j < wins.length; j++) {
+            untile(wins[j]);
+            if (live.length && !wins[j].deleted) tile(wins[j], live[0]);
+        }
+        delete state.strips[stale[i].key];
+    }
+    if (stale.length) log("output change: moved " + stale.length + " strip(s) to " + (live.length ? live[0] : "nowhere (floating)"));
+}
+
+function onScreensChanged() {
+    migrateStrips();
+    reconcile();
+    scheduleReport();
+}
+
 function wireWindow(w) {
     var id = wid(w);
     if (state.wired[id]) return;
     state.wired[id] = true;
+    // Bar / dock surfaces change the usable area when they move or resize: re-lay out.
+    if (w.dock || (w.skipTaskbar && w.onAllDesktops))
+        w.frameGeometryChanged.connect(guard("areaChanged", scheduleLayout));
     w.desktopsChanged.connect(guard("desktopsChanged", function () {
         if (!state.applying) retile(w);
     }));
@@ -548,9 +590,15 @@ function wireWindow(w) {
     }));
     w.maximizedChanged.connect(guard("maximizedChanged", function () {
         if (state.applying || !stripOf(w) || !w.maximizeMode) return;
-        // KWin maximize on a tiled window means "maximize the column" (decided in Phase 3).
+        // KWin maximize on a tiled window means "maximize ITS column" (not the focused one).
         w.setMaximize(false, false);
-        runCommand("maximize-column");
+        var strip = stripOf(w), at = strip ? stripFind(strip, w) : null;
+        if (!at) return;
+        var prev = strip.focusedColumn;
+        stripFocusWindow(strip, w);
+        stripToggleMaximize(strip, at.c);
+        reveal(strip, prev);
+        layoutAll(w);
     }));
     w.interactiveMoveResizeStarted.connect(guard("moveStarted", function () {
         var g = w.frameGeometry;
@@ -940,7 +988,7 @@ function init() {
     workspace.windowRemoved.connect(guard("windowRemoved", onWindowRemoved));
     workspace.windowActivated.connect(guard("windowActivated", onWindowActivated));
     workspace.currentDesktopChanged.connect(guard("currentDesktopChanged", function () { layoutAll(null); scheduleReport(); }));
-    workspace.screensChanged.connect(guard("screensChanged", scheduleLayout));
+    workspace.screensChanged.connect(guard("screensChanged", onScreensChanged));
     workspace.virtualScreenGeometryChanged.connect(guard("virtualScreenGeometryChanged", scheduleLayout));
 
     var list = workspace.windowList();
