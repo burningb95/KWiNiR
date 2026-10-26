@@ -558,6 +558,50 @@ ContentPage {
                 }
             }
 
+            // KWin port: the scrolling tiler's keys (helpers/kwinir-tiling.js SHORTCUTS table).
+            ContentSubsection {
+                title: Translation.tr("Tiling shortcuts (only while tiling is on)")
+                Repeater {
+                    model: [
+                        { keys: "Meta+Alt+H / L", what: Translation.tr("Focus the column to the left / right (also Ctrl + Alt + ← →)") },
+                        { keys: "Meta+Alt+J / K", what: Translation.tr("Focus the window below / above in a column (also Ctrl + Alt + ↓ ↑)") },
+                        { keys: "Meta+Alt+Shift+H / L", what: Translation.tr("Move the column left / right") },
+                        { keys: "Meta+Alt+Shift+J / K", what: Translation.tr("Move the window down / up inside its column") },
+                        { keys: "Meta+Alt+[ / ]", what: Translation.tr("Pull the window into the left / right column, or push it out into its own") },
+                        { keys: "Meta+Alt+R", what: Translation.tr("Cycle the column width") },
+                        { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
+                        { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
+                        { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") }
+                    ]
+                    RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 12
+                        StyledText {
+                            Layout.preferredWidth: 220
+                            text: modelData.keys
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colPrimary
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: modelData.what
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colOnLayer1
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Meta+Alt+K and L used to switch keyboard layouts and Meta+Alt+R recorded the screen; those three bindings were released for the tiler (REVERT-tiling-keys.sh in ~/.local/share/Fancy-Floating-Bar gives them back). The keys are global shortcuts registered by the tiler while it runs.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             PageResetFooter {
                 Layout.fillWidth: true
                 scope: [""]
