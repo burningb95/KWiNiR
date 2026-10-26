@@ -270,14 +270,19 @@ ContentPage {
 
     // Monitors that use fixed regions. Writes only on a real change (switches fire on init).
     function regionOutputOn(name: string): bool {
-        return Array.from(Config.options?.tiling?.regionOutputs ?? []).includes(name)
+        const cur = Array.from(Config.options?.tiling?.regionOutputs ?? [])
+        return cur.includes(name) || cur.includes("@all")
     }
 
     function setRegionOutput(name: string, on: bool): void {
-        const cur = Array.from(Config.options?.tiling?.regionOutputs ?? [])
-        if (cur.includes(name) === on)
+        if (root.regionOutputOn(name) === on)
             return
-        Config.setNestedValue("tiling.regionOutputs", on ? cur.concat([name]) : cur.filter(n => n !== name))
+        let cur = Array.from(Config.options?.tiling?.regionOutputs ?? [])
+        if (cur.includes("@all"))      // turning one monitor off: "every monitor" becomes the explicit others
+            cur = Quickshell.screens.map(sc => sc.name).filter(n => n !== name)
+        else
+            cur = on ? cur.concat([name]) : cur.filter(n => n !== name)
+        Config.setNestedValue("tiling.regionOutputs", cur)
     }
 
     Process {
