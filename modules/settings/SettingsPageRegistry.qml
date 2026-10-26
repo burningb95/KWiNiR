@@ -248,6 +248,15 @@ Singleton {
             desc: Translation.tr("Apple-inspired Island shell and modules"),
             essential: true,
             component: "modules/settings/IrisConfig.qml"
+        },
+        // KWin port: scrolling tiling (helpers/kwinir-tiling.js)
+        {
+            key: "tiling",
+            name: Translation.tr("Tiling"),
+            icon: "view_column",
+            desc: Translation.tr("Scrolling columns, gaps, portrait stacking, keys"),
+            essential: true,
+            component: "modules/settings/TilingConfig.qml"
         }
     ]
 
@@ -256,7 +265,7 @@ Singleton {
     readonly property var defaultCategories: [
         { label: Translation.tr("Essentials"), pages: [0] },
         { label: Translation.tr("Appearance"), pages: [4, 25, 3, 14, 21] },
-        { label: Translation.tr("Shell"), pages: [2, 28, 26, 27, 5, 22, 23, 16, 10, 11, 18, 19, 20] },
+        { label: Translation.tr("Shell"), pages: [2, 28, 29, 26, 27, 5, 22, 23, 16, 10, 11, 18, 19, 20] },
         { label: Translation.tr("System"), pages: [1, 24, 7, 6, 12, 15, 8, 17] },
         { label: Translation.tr("Reference"), pages: [9, 13] }
     ]

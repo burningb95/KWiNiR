@@ -19,7 +19,7 @@ PillSurface {
         { page: 3, icon: "waves", label: Translation.tr("Wallpaper"), desc: Translation.tr("Backdrop, effects and wallpaper behavior") },
         { page: 2, icon: "app-window", label: Translation.tr("Bar"), desc: Translation.tr("Pill modules, layout and behavior") },
         { page: 12, icon: "monitor", label: Translation.tr("Display & input"), desc: Translation.tr("Niri outputs, devices and layout") },
-        { page: 18, icon: "sidebar-right", label: Translation.tr("Workspaces"), desc: Translation.tr("Workspace strip and navigation") },
+        { page: 29, icon: "columns", label: Translation.tr("Tiling"), desc: Translation.tr("Scrolling columns, gaps and keys") },
         { page: 9, icon: "keyboard", label: Translation.tr("Shortcuts"), desc: Translation.tr("Keybindings reference") },
         { page: 1, icon: "cog", label: Translation.tr("System"), desc: Translation.tr("Audio, battery, language and lock") },
         { page: 21, icon: "sparkles", label: Translation.tr("Ricelin"), desc: Translation.tr("Pill and island appearance") }

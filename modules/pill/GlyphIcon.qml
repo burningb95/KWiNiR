@@ -42,6 +42,8 @@ Item {
         "sparkles": { d: "M12 3l1.7 5.1 5.1 1.7-5.1 1.7L12 16.6l-1.7-5.1-5.1-1.7 5.1-1.7z M5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z", fill: false },
         "app-window": { d: "M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z M2 9.5h20 M5.5 7h.01 M8 7h.01 M10.5 7h.01", fill: false },
         "sidebar-left": { d: "M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8 4v16 M5 8h.01 M5 12h.01 M5 16h.01", fill: false },
+        // KWin port: three columns, for the Tiling entry of the settings dropdown
+        "columns": { d: "M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M9 4v16 M15 4v16", fill: false },
         "sidebar-right": { d: "M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M16 4v16 M19 8h.01 M19 12h.01 M19 16h.01", fill: false },
         "mouse": { d: "M12 2a6 6 0 0 0-6 6v8a6 6 0 0 0 12 0V8a6 6 0 0 0-6-6z M12 6v3.5", fill: false },
         "keyboard": { d: "M2.5 6h19a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-19a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z M6 10h.01 M10 10h.01 M14 10h.01 M18 10h.01 M7.5 14h9", fill: false },
