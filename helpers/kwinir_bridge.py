@@ -85,9 +85,18 @@ TILING_COMMANDS = {
     "move-window-up", "move-window-down", "consume-left", "consume-right", "expel",
     "consume-or-expel-left", "consume-or-expel-right", "cycle-width", "maximize-column",
     "center-column", "float-toggle", "relayout", "adopt", "focus-column",
-    "send-to-slot", "toggle-mode",
+    "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down",
 }
 CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
+# KWin port: with --quicktile (and --tiling) the stock Meta+arrow quick-tile bindings are released
+# while tiling runs, so the tiler's own Meta+arrow shortcuts get the keys without a fight. The
+# originals are written to STATE_FILE first and given back on exit (or on the next start).
+QUICKTILE = (("Window Quick Tile Left", "Quick Tile Window to the Left", 0x11000012),
+             ("Window Quick Tile Right", "Quick Tile Window to the Right", 0x11000014),
+             ("Window Quick Tile Top", "Quick Tile Window to the Top", 0x11000013),
+             ("Window Quick Tile Bottom", "Quick Tile Window to the Bottom", 0x11000015))
+STATE_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                          "pillbar", "released-quicktile.json")
 OUTPUT_RE = re.compile(r"^[A-Za-z0-9@._:-]{1,64}$")
 
 SHOW_DELAY_MS = 1000       # quick jobs never flash a notification (KIO itself waits 500 ms)
@@ -513,7 +522,7 @@ def clean_tiling_report(e):
 
 
 class Bridge:
-    def __init__(self, jobs_enabled, tiling_enabled=False):
+    def __init__(self, jobs_enabled, tiling_enabled=False, quicktile=False):
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.loop = GLib.MainLoop()
         self.jobs_enabled = jobs_enabled
@@ -526,6 +535,7 @@ class Bridge:
         self.script_loaded = False
         # KWin port: tiling
         self.tiling = tiling_enabled
+        self.quicktile = quicktile and tiling_enabled
         self.tiling_loaded = False
         self.tiling_config = None   # last validated config from the bar
         self.config_sent = False    # per script load: the first reply to NextCommand is `config`
@@ -655,9 +665,14 @@ class Bridge:
             # global shortcuts a previous tiling run left behind (kglobalaccel keeps them).
             if self.tiling:
                 self.config_sent = False
+                if self.quicktile:
+                    self.release_quicktile()
+                else:
+                    self.restore_quicktile()
                 self.tiling_loaded = self._load_one(TILING_SCRIPT, TILING_NAME)
             else:
                 self.unregister_tiling_shortcuts()
+                self.restore_quicktile()
             # Not /Scripting/Script<id>.run: KWin numbers a new script by the current
             # script count, so after any unload the id can equal a live script's and
             # its D-Bus path is already taken — run() then hits that other script and
@@ -679,6 +694,63 @@ class Bridge:
         self.tiling_loaded = False
 
     # -- KWin port: tiling ------------------------------------------------------
+    def _ga(self, method, args, sig, reply):
+        return self.bus.call_sync("org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel", method,
+                                  GLib.Variant(sig, args), GLib.VariantType(reply), Gio.DBusCallFlags.NONE,
+                                  NOTIFY_TIMEOUT_MS, None).unpack()[0]
+
+    def _quicktile_keys(self, name, friendly, keys=None):
+        aid = ["kwin", name, "KWin", friendly]
+        if keys is None:
+            return list(self._ga("shortcut", (aid,), "(as)", "(ai)"))
+        return list(self._ga("setShortcut", (aid, keys, 4), "(asaiu)", "(ai)"))   # 4 = NoAutoloading
+
+    def _read_released(self):
+        try:
+            with open(STATE_FILE) as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_released(self, data):
+        try:
+            if data:
+                os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+                with open(STATE_FILE, "w") as f:
+                    json.dump(data, f)
+            elif os.path.exists(STATE_FILE):
+                os.remove(STATE_FILE)
+        except OSError as e:
+            log(f"could not update {STATE_FILE}: {e}")
+
+    def release_quicktile(self):
+        """Free the stock Meta+arrow quick-tile keys for the tiler. Originals are saved first."""
+        saved = self._read_released()
+        try:
+            for name, friendly, stock in QUICKTILE:
+                cur = self._quicktile_keys(name, friendly)
+                if name not in saved and stock in cur:
+                    saved[name] = cur
+                    self._write_released(saved)
+                if name in saved and cur:
+                    self._quicktile_keys(name, friendly, [])
+        except GLib.Error as e:
+            log(f"could not release the quick-tile keys: {e.message}")
+
+    def restore_quicktile(self):
+        """Give the quick-tile keys back (also sweeps up after a bar that died while tiling)."""
+        saved = self._read_released()
+        if not saved:
+            return
+        try:
+            for name, friendly, _stock in QUICKTILE:
+                if name in saved and not self._quicktile_keys(name, friendly):   # not rebound meanwhile
+                    self._quicktile_keys(name, friendly, [int(k) for k in saved[name]])
+            self._write_released({})
+        except GLib.Error as e:
+            log(f"could not restore the quick-tile keys: {e.message}")
+
     def unregister_tiling_shortcuts(self):
         """kglobalaccel keeps a script's shortcuts after it unloads; remove ours."""
         try:
@@ -957,6 +1029,7 @@ class Bridge:
         self.unload_script()
         if was_tiling and not self.replaced:
             self.unregister_tiling_shortcuts()
+            self.restore_quicktile()
         self.loop.quit()
         return GLib.SOURCE_REMOVE
 
@@ -967,7 +1040,8 @@ def main():
         ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
     except OSError:
         pass
-    bridge = Bridge(jobs_enabled="--jobs" in sys.argv[1:], tiling_enabled="--tiling" in sys.argv[1:])
+    bridge = Bridge(jobs_enabled="--jobs" in sys.argv[1:], tiling_enabled="--tiling" in sys.argv[1:],
+                    quicktile="--quicktile" in sys.argv[1:])
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         unix_signal_add(GLib.PRIORITY_HIGH, signum, bridge.quit)
     bridge.loop.run()

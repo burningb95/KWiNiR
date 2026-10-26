@@ -72,6 +72,7 @@ Singleton {
     readonly property var command: ["/usr/bin/python3", Quickshell.shellPath("helpers/kwinir_bridge.py")]
         .concat(root.jobProgress ? ["--jobs"] : [])
         .concat(root.tilingEnabled ? ["--tiling"] : [])
+        .concat(root.tilingEnabled && (Config.options?.tiling?.takeOverQuickTile ?? true) ? ["--quicktile"] : [])
 
     // Mirrors TILING_COMMANDS in helpers/kwinir_bridge.py, which stays authoritative; this copy
     // only lets IPC callers hear about a typo instead of "sent".
@@ -79,7 +80,7 @@ Singleton {
         "move-column-left", "move-column-right", "move-window-up", "move-window-down", "consume-left",
         "consume-right", "expel", "consume-or-expel-left", "consume-or-expel-right", "cycle-width",
         "maximize-column", "center-column", "float-toggle", "relayout", "adopt", "focus-column",
-        "send-to-slot", "toggle-mode"]
+        "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down"]
 
     /** Sends one command to the tiling script (the helper whitelists names). False if refused or not running. */
     function sendTiling(name: string, arg): bool {

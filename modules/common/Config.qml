@@ -1364,6 +1364,10 @@ Singleton {
                     "org.kde.latte-dock", "org.kde.klipper", "xwaylandvideobridge",
                     "org.kde.kscreenlocker_greet", "steam_app_*", "pinentry*", "kwinir-float*"]
                 property bool shortcuts: true             // register the Meta+Alt / Ctrl+Alt keys
+                // While tiling runs, Meta+arrows belong to the tiler (KDE's quick-tile keys are released
+                // and given back when tiling stops). Off: KDE keeps them and a tiled window that gets
+                // quick-tiled is moved instead, with a visible bounce.
+                property bool takeOverQuickTile: true
             }
 
             property JsonObject gameMode: JsonObject {
