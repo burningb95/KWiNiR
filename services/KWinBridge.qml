@@ -41,7 +41,7 @@ Singleton {
     signal overviewPolled(bool open)
 
     // KWin port: scrolling tiling. `tiling` is the helper's last (validated) report:
-    // {enabled, outputs: {<name>: {desktop, focusedColumn, scroll, vertical, columns: [{width, visible,
+    // {enabled, outputs: {<name>: {desktop, focusedColumn, scroll, vertical, mode, columns: [{width, visible,
     // windows: [{id, app, focused}]}]}}}. Toggling tiling.enable restarts the helper, which
     // releases every window the script minimized before it unloads the script.
     readonly property bool tilingEnabled: root.enabled && (Config.options?.tiling?.enable ?? true)
@@ -55,6 +55,8 @@ Singleton {
             center: t?.center ?? "on-overflow",
             struts: ({ left: t?.struts?.left ?? 0, right: t?.struts?.right ?? 0,
                        top: t?.struts?.top ?? 0, bottom: t?.struts?.bottom ?? 0 }),
+            regionOutputs: Array.from(t?.regionOutputs ?? []),
+            regionsNewWindow: t?.regionsNewWindow ?? "smart",
             portraitVertical: t?.portraitVertical ?? true,
             portraitDockStrip: t?.portraitDockStrip ?? 8,
             centerSingle: t?.centerSingle ?? false,
@@ -76,7 +78,8 @@ Singleton {
     readonly property var tilingCommands: ["focus-left", "focus-right", "focus-up", "focus-down",
         "move-column-left", "move-column-right", "move-window-up", "move-window-down", "consume-left",
         "consume-right", "expel", "consume-or-expel-left", "consume-or-expel-right", "cycle-width",
-        "maximize-column", "center-column", "float-toggle", "relayout", "adopt", "focus-column"]
+        "maximize-column", "center-column", "float-toggle", "relayout", "adopt", "focus-column",
+        "send-to-slot", "toggle-mode"]
 
     /** Sends one command to the tiling script (the helper whitelists names). False if refused or not running. */
     function sendTiling(name: string, arg): bool {

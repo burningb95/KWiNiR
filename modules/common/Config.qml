@@ -1347,6 +1347,12 @@ Singleton {
                 property bool portraitVertical: true
                 // Extra px kept clear at the bottom of portrait monitors: room for a dock's hover strip.
                 property int portraitDockStrip: 8
+                // Monitors that use fixed regions (the tile layout from KWin's Meta+T editor) instead of
+                // scrolling columns. Names, "@primary" or "@all". Meta+Alt+G flips one at runtime.
+                property list<string> regionOutputs: []
+                // Where a new window goes in regions mode: "smart" = the slot already holding its app,
+                // else the largest empty slot, else the focused one; "focused" = the focused slot.
+                property string regionsNewWindow: "smart"
                 property bool centerSingle: false         // a lone column sits in the middle
                 property bool expandSingle: false         // a lone column fills the working area
                 // Empty = tile every tileable window; otherwise only these window classes.

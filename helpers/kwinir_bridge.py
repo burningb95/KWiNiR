@@ -85,8 +85,10 @@ TILING_COMMANDS = {
     "move-window-up", "move-window-down", "consume-left", "consume-right", "expel",
     "consume-or-expel-left", "consume-or-expel-right", "cycle-width", "maximize-column",
     "center-column", "float-toggle", "relayout", "adopt", "focus-column",
+    "send-to-slot", "toggle-mode",
 }
 CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
+OUTPUT_RE = re.compile(r"^[A-Za-z0-9@._:-]{1,64}$")
 
 SHOW_DELAY_MS = 1000       # quick jobs never flash a notification (KIO itself waits 500 ms)
 UPDATE_INTERVAL_MS = 500   # at most two notification updates per second per job
@@ -432,9 +434,14 @@ def clean_tiling_config(c):
     for key in ("portraitVertical", "centerSingle", "expandSingle"):
         if isinstance(c.get(key), bool):
             out[key] = c[key]
-    outputs = _str_list(c.get("outputs"), 8, 64, re.compile(r"^[A-Za-z0-9@._:-]+$"))
+    outputs = _str_list(c.get("outputs"), 8, 64, OUTPUT_RE)
     if outputs:
         out["outputs"] = outputs
+    region_outputs = _str_list(c.get("regionOutputs"), 8, 64, OUTPUT_RE)
+    if region_outputs is not None:          # an empty list is valid: no output uses regions
+        out["regionOutputs"] = region_outputs
+    if c.get("regionsNewWindow") in ("smart", "focused"):
+        out["regionsNewWindow"] = c["regionsNewWindow"]
     for key in ("onlyClasses", "floatClasses"):
         lst = _str_list(c.get(key), 200, 100, CLASS_RE)
         if lst is not None:
@@ -454,6 +461,14 @@ def clean_tiling_command(msg):
         if isinstance(arg, str) and arg.isdigit():
             arg = int(arg)
         return (name, arg) if isinstance(arg, int) and not isinstance(arg, bool) and 0 <= arg < 64 else None
+    if name == "send-to-slot":
+        if isinstance(arg, str) and arg.isdigit():
+            arg = int(arg)
+        return (name, arg) if isinstance(arg, int) and not isinstance(arg, bool) and 1 <= arg <= 9 else None
+    if name == "toggle-mode":
+        if arg in (None, ""):
+            return (name, None)
+        return (name, arg) if isinstance(arg, str) and OUTPUT_RE.match(arg) else None
     if name == "adopt":
         if arg in (None, ""):
             return (name, None)
@@ -492,7 +507,8 @@ def clean_tiling_report(e):
                 out_wins.append({"id": w["id"], "app": w["app"], "focused": w["focused"]})
             out_cols.append({"width": float(col["width"]), "visible": col["visible"], "windows": out_wins})
         outputs[name] = {"desktop": o["desktop"], "focusedColumn": int(o["focusedColumn"]),
-                         "scroll": float(o["scroll"]), "vertical": o.get("vertical") is True, "columns": out_cols}
+                         "scroll": float(o["scroll"]), "vertical": o.get("vertical") is True,
+                         "mode": "regions" if o.get("mode") == "regions" else "strip", "columns": out_cols}
     return {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
 
 
