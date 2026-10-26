@@ -1325,6 +1325,28 @@ Singleton {
                 property bool wallpaperSelector: true
             }
 
+            // KWin port: niri-style scrolling tiling (helpers/kwinir-tiling.js, loaded by the KWin
+            // bridge). Off by default: enabling it tiles the windows already open.
+            property JsonObject tiling: JsonObject {
+                property bool enable: false
+                // Output names that tile; "@primary" = KWin's priority-1 output (survives cable swaps).
+                property list<string> outputs: ["@primary"]
+                property int gap: 12                      // px, between windows and around the strip
+                property real defaultWidth: 0.5           // width of a new column (fraction of the screen)
+                property list<real> presetWidths: [0.3333, 0.5, 0.6667]   // cycle-width steps
+                property string center: "on-overflow"     // never | on-overflow | always
+                property int bottomMargin: 0              // px kept clear at the bottom of a tiling output (Latte)
+                // Empty = tile every tileable window; otherwise only these window classes.
+                property list<string> onlyClasses: []
+                // Window classes that never tile (a trailing * matches a prefix).
+                property list<string> floatClasses: ["org.kde.spectacle", "org.kde.krunner",
+                    "org.kde.plasmashell", "plasmashell", "org.kde.polkit-kde-authentication-agent-1",
+                    "org.kde.kwalletd5", "org.kde.kwalletd6", "org.kde.kwalletmanager",
+                    "org.kde.latte-dock", "org.kde.klipper", "xwaylandvideobridge",
+                    "org.kde.kscreenlocker_greet", "steam_app_*", "pinentry*", "kwinir-float*"]
+                property bool shortcuts: true             // register the Meta+Alt / Ctrl+Alt keys
+            }
+
             property JsonObject gameMode: JsonObject {
                 // KWin port: with disableEffects on, these KWin effects are unloaded
                 // for the session while game mode is active and reloaded after

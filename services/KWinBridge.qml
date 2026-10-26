@@ -17,7 +17,9 @@ import qs.services
  *     (Dolphin copies, downloads) as progress notifications
  *     (notifications.jobProgress, default on);
  *   - KWin state: focused output and overview, polled in-process (no gdbus spawns);
- *     KWinService uses these while `statePolled` and falls back to its own poll.
+ *     KWinService uses these while `statePolled` and falls back to its own poll;
+ *   - tiling (tiling.enable): the helper loads helpers/kwinir-tiling.js, this singleton sends it
+ *     the options and commands over the helper's stdin and exposes its state report as `tiling`.
  * The helper is a child of this process: it starts and stops with the bar, and
  * is restarted if it dies. Only the bar process runs it — the settings window
  * loads services too, and a second helper would take the D-Bus names over.
@@ -38,8 +40,51 @@ Singleton {
     signal outputPolled(string name)
     signal overviewPolled(bool open)
 
+    // KWin port: scrolling tiling. `tiling` is the helper's last (validated) report:
+    // {enabled, outputs: {<name>: {desktop, focusedColumn, scroll, columns: [{width, visible,
+    // windows: [{id, app, focused}]}]}}}. Toggling tiling.enable restarts the helper, which
+    // releases every window the script minimized before it unloads the script.
+    readonly property bool tilingEnabled: root.enabled && (Config.options?.tiling?.enable ?? false)
+    property var tiling: ({ enabled: false, outputs: ({}) })
+    readonly property var tilingConfig: {
+        const t = Config.options?.tiling
+        return {
+            gap: t?.gap ?? 12,
+            defaultWidth: t?.defaultWidth ?? 0.5,
+            presetWidths: Array.from(t?.presetWidths ?? [0.3333, 0.5, 0.6667]),
+            center: t?.center ?? "on-overflow",
+            bottomMargin: t?.bottomMargin ?? 0,
+            outputs: Array.from(t?.outputs ?? ["@primary"]),
+            onlyClasses: Array.from(t?.onlyClasses ?? []),
+            floatClasses: Array.from(t?.floatClasses ?? []),
+            shortcuts: t?.shortcuts ?? true
+        }
+    }
+    onTilingConfigChanged: configTimer.restart()
+
     readonly property var command: ["/usr/bin/python3", Quickshell.shellPath("helpers/kwinir_bridge.py")]
         .concat(root.jobProgress ? ["--jobs"] : [])
+        .concat(root.tilingEnabled ? ["--tiling"] : [])
+
+    // Mirrors TILING_COMMANDS in helpers/kwinir_bridge.py, which stays authoritative; this copy
+    // only lets IPC callers hear about a typo instead of "sent".
+    readonly property var tilingCommands: ["focus-left", "focus-right", "focus-up", "focus-down",
+        "move-column-left", "move-column-right", "move-window-up", "move-window-down", "consume-left",
+        "consume-right", "expel", "consume-or-expel-left", "consume-or-expel-right", "cycle-width",
+        "maximize-column", "center-column", "float-toggle", "relayout", "adopt", "focus-column"]
+
+    /** Sends one command to the tiling script (the helper whitelists names). False if refused or not running. */
+    function sendTiling(name: string, arg): bool {
+        if (!root.tilingEnabled || !root.ready || !helper.running || root.tilingCommands.indexOf(name) < 0)
+            return false
+        helper.write(JSON.stringify({ type: "tiling-command", name: name, arg: arg ?? null }) + "\n")
+        return true
+    }
+
+    function _sendTilingConfig(): void {
+        if (root.tilingEnabled && root.ready && helper.running)
+            helper.write(JSON.stringify({ type: "tiling-config", config: root.tilingConfig }) + "\n")
+    }
 
     property bool _restartPending: false
     onCommandChanged: if (helper.running) root._restart(300)
@@ -56,7 +101,8 @@ Singleton {
         if (!event || typeof event !== "object")
             return
         switch (event.type) {
-        case "ready": root.ready = true; break
+        case "ready": root.ready = true; root._sendTilingConfig(); break
+        case "tiling": root.tiling = event; break
         case "fullscreen": root.fullscreen = event.value === true; break
         case "capture": root.capture = event.value === true; break
         case "jobs": root.activeJobs = Math.max(0, Number(event.count) || 0); break
@@ -68,6 +114,7 @@ Singleton {
     Process {
         id: helper
         running: root.enabled && !root._restartPending
+        stdinEnabled: true
         command: root.command
         stdout: SplitParser { onRead: line => root._handle(line) }
         stderr: SplitParser { onRead: line => console.info(line) }
@@ -78,11 +125,19 @@ Singleton {
             root.activeJobs = 0
             root.activeOutput = ""
             root.overview = false
+            root.tiling = { enabled: false, outputs: ({}) }
             if (root.enabled && !root._restartPending) {
                 console.warn(`[KWinBridge] helper exited (${code}), restarting in 5 s`)
                 root._restart(5000)
             }
         }
+    }
+
+    // Coalesces settings edits (a spin box drag) into one config message.
+    Timer {
+        id: configTimer
+        interval: 200
+        onTriggered: root._sendTilingConfig()
     }
 
     Timer {

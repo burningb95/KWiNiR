@@ -258,6 +258,39 @@ ShellRoot {
         function current(): string { return UserPalettes.current }
     }
 
+    /**
+     * KWin port addition: scrolling tiling (helpers/kwinir-tiling.js).
+     *   qs -c pillbar ipc call tiling toggle | enable | disable | status
+     *   qs -c pillbar ipc call tiling command focus-right      (see TILING_COMMANDS in the helper)
+     *   qs -c pillbar ipc call tiling commandArg focus-column 2
+     */
+    IpcHandler {
+        target: "tiling"
+        function toggle(): string { return setEnabled(!(Config.options?.tiling?.enable ?? false)) }
+        function enable(): string { return setEnabled(true) }
+        function disable(): string { return setEnabled(false) }
+        function setEnabled(on: bool): string {
+            Config.setNestedValue("tiling.enable", on)
+            return on ? "tiling on" : "tiling off"
+        }
+        function status(): string {
+            const t = KWinBridge.tiling
+            if (!(Config.options?.tiling?.enable ?? false))
+                return "off"
+            if (!t?.enabled)
+                return "starting"
+            const parts = []
+            for (const name of Object.keys(t.outputs ?? {})) {
+                const o = t.outputs[name]
+                parts.push(`${name}: ${o.columns.length} columns, focus ${o.focusedColumn}, visible ` +
+                           o.columns.map(c => c.visible ? "#" : ".").join(""))
+            }
+            return parts.length ? parts.join("; ") : "on, no tiled windows on this desktop"
+        }
+        function command(name: string): string { return KWinBridge.sendTiling(name, null) ? "sent" : "refused (unknown command, or tiling is not running)" }
+        function commandArg(name: string, arg: string): string { return KWinBridge.sendTiling(name, arg) ? "sent" : "refused (unknown command, or tiling is not running)" }
+    }
+
     IpcHandler {
         target: "sidebarLeft"
         function toggle(): void { GlobalStates.toggleSidebarLeft("") }
