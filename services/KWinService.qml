@@ -24,9 +24,13 @@ import qs.services
  *
  * Deliberately not implemented, because KWin has no equivalent:
  *   - isOverviewHotCornerActive(): electric-border hover state is not queryable.
- *   - liveWindows / per-workspace active_window_id: KWin supports no
+ *   - A general window list / per-workspace active_window_id: KWin supports no
  *     foreign-toplevel protocol, so there is no window list available to
  *     Quickshell. GameMode already treats this as false on non-niri.
+ *     Exception (KWin port): with tiling on, `liveWindows` lists the *tiled* windows
+ *     only, in niri's shape, from the tiler's report. Nothing reads it today
+ *     (every consumer of a window list reads NiriService); it is here so niri-shaped
+ *     code can be pointed at KWin later without a second adapter.
  */
 Singleton {
     id: root
@@ -47,7 +51,27 @@ Singleton {
     // Kept so GameMode/PillBar bindings resolve; empty on KWin by design.
     property var workspaces: ({})
     property var outputs: ({})
-    property var liveWindows: []
+    // KWin port: tiled windows in niri's shape ({id, app_id, workspace_id, output, is_focused,
+    // layout.pos_in_scrolling_layout [column, row] 1-based}); empty unless tiling is on.
+    readonly property var liveWindows: {
+        const t = KWinBridge.tiling
+        if (!t?.enabled)
+            return []
+        const out = []
+        for (const name of Object.keys(t.outputs ?? {})) {
+            const o = t.outputs[name]
+            const desk = root.allWorkspaces.find(w => w.id === o.desktop)
+            o.columns.forEach((col, ci) => col.windows.forEach((w, ri) => out.push({
+                id: w.id,
+                app_id: w.app,
+                workspace_id: desk ? desk.idx : 0,
+                output: name,
+                is_focused: w.focused === true,
+                layout: { pos_in_scrolling_layout: [ci + 1, ri + 1] }
+            })))
+        }
+        return out
+    }
 
     readonly property bool ready: root.allWorkspaces.length > 0
 
