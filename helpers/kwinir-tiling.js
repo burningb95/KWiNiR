@@ -28,6 +28,9 @@ var DEFAULTS = {
     ],
     struts: { left: 0, right: 0, top: 0, bottom: 0 },   // px kept clear on every tiling output
     regionOutputs: [],                // outputs that use fixed regions (KWin's tile layout) instead of the strip
+    regionSplits: {},                 // output -> [base-rect key]: tiles of KWin's layout split top / bottom (Ctrl+Meta+S)
+    newWindowOverlay: true,           // a new window opens OVER a tiled one (same cell) instead of getting a cell of its own
+    arrowKeysScrollStrips: false,     // Meta+arrow on a scrolling monitor: false = leave it alone, true = move/snap columns
     regionsNewWindow: "smart",        // "smart": same app's slot, else an empty slot, else the focused one | "focused"
     portraitVertical: true,           // portrait outputs scroll vertically (rows) instead of columns
     portraitDockStrip: 8,             // extra px kept clear at the bottom of portrait outputs (a dock's hover strip)
@@ -413,9 +416,27 @@ function matchesClass(cls, patterns) {
 // tile layout for that output (System Settings / Meta+T editor), as fractions of the working
 // area. A slot holds a stack of windows, split evenly top to bottom. Nothing scrolls, nothing
 // is hidden.
-function makeZone(rects) {
-    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "" };
-    zoneSetRects(z, rects);
+function baseKey(r) { return [r.x, r.y, r.w, r.h].map(function (v) { return Math.round(v * 1000) / 1000; }).join(","); }
+
+// KWin's tile rects plus the user's top/bottom splits (a list of baseKeys) -> the slot rects.
+// Every rect carries its base key; the halves of a split also carry half: 0 (top) / 1 (bottom).
+function zoneDerive(base, splits) {
+    var out = [];
+    for (var i = 0; i < base.length; i++) {
+        var r = base[i], k = baseKey(r);
+        if (splits && splits.indexOf(k) >= 0) {
+            out.push({ x: r.x, y: r.y, w: r.w, h: r.h / 2, key: k, half: 0 });
+            out.push({ x: r.x, y: r.y + r.h / 2, w: r.w, h: r.h / 2, key: k, half: 1 });
+        } else {
+            out.push({ x: r.x, y: r.y, w: r.w, h: r.h, key: k });
+        }
+    }
+    return out;
+}
+
+function makeZone(base, splits) {
+    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base };
+    zoneSetRects(z, zoneDerive(base, splits));
     z.focusedSlot = largestSlot(z.slots);
     return z;
 }
@@ -426,6 +447,52 @@ function zoneSetRects(zone, rects) {
         return { rect: r, windows: old[i] ? old[i].windows : [], focused: old[i] ? old[i].focused : 0 };
     });
     zone.sig = JSON.stringify(rects);
+}
+
+function overlapArea(a, b) {
+    var w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return w > 1e-9 && h > 1e-9 ? w * h : 0;
+}
+
+// The slots changed (a Meta+T edit, or a split / merge): every window moves to the new slot
+// that covers its old one. A slot that was cut in two spreads its stack over the halves in
+// order (one window goes to the top half); slots that were merged stack in order.
+function zoneReseat(zone, rects) {
+    var old = zone.slots, focus = zoneFocusedWindow(zone), fresh = [], i, j;
+    for (j = 0; j < rects.length; j++) fresh.push({ rect: rects[j], windows: [], focused: 0 });
+    for (i = 0; i < old.length; i++) {
+        var wins = old[i].windows;
+        if (!wins.length) continue;
+        var ov = [];
+        for (j = 0; j < rects.length; j++) {
+            var a = overlapArea(old[i].rect, rects[j]);
+            if (a > 0) ov.push({ j: j, a: a });
+        }
+        if (!ov.length) {                                   // nothing overlaps: the nearest centre
+            var cx = old[i].rect.x + old[i].rect.w / 2, cy = old[i].rect.y + old[i].rect.h / 2, bd = 1e9, bj = 0;
+            for (j = 0; j < rects.length; j++) {
+                var d = Math.pow(rects[j].x + rects[j].w / 2 - cx, 2) + Math.pow(rects[j].y + rects[j].h / 2 - cy, 2);
+                if (d < bd) { bd = d; bj = j; }
+            }
+            ov.push({ j: bj, a: 1 });
+        }
+        // ignore slivers: a slot counts only if it holds a good share of the old one
+        var best = Math.max.apply(null, ov.map(function (o) { return o.a; }));
+        ov = ov.filter(function (o) { return o.a >= best * 0.25; });
+        if (ov.length === 1 || wins.length === 1 && ov.length < 1) {
+            for (var t = 0; t < wins.length; t++) fresh[ov[0].j].windows.push(wins[t]);
+        } else {
+            ov.sort(function (p, q) { return (rects[p.j].y - rects[q.j].y) || (rects[p.j].x - rects[q.j].x); });
+            for (var t2 = 0; t2 < wins.length; t2++)
+                fresh[ov[Math.min(Math.floor(t2 * ov.length / wins.length), ov.length - 1)].j].windows.push(wins[t2]);
+        }
+    }
+    zone.slots = fresh;
+    zone.sig = JSON.stringify(rects);
+    zone.focusedSlot = largestSlot(fresh);
+    if (focus) zoneFocusWindow(zone, focus);
+    for (j = 0; j < fresh.length; j++)
+        if (fresh[j].focused >= fresh[j].windows.length) fresh[j].focused = Math.max(0, fresh[j].windows.length - 1);
 }
 
 function largestSlot(slots) {
@@ -628,6 +695,8 @@ var state = {
     strips: {},        // key "output|desktopId" -> strip (+ outputName, desktopId)
     zones: {},         // key "Z:output|desktopId" -> zone (fixed regions), for outputs in regions mode
     modeFlip: {},      // output name -> "strip" | "regions": toggle-mode overrides cfg.regionOutputs
+    overlays: {},      // window id -> {w, host}: windows sitting over a tiled window's cell (not in any container)
+    splits: {},        // output name -> [baseKey]: tiles split top / bottom (persisted by the bar)
     regionsSig: "",    // signature of the tile layouts last seen, to notice Meta+T edits
     byWin: {},         // window id -> strip or zone key
     floating: {},      // window id -> true when the user floated it (never auto-tiled)
@@ -724,7 +793,7 @@ function getZone(outName, deskId, create) {
     if (!z && create) {
         var out = outputByName(outName), desk = desktopById(deskId);
         if (!out || !desk) return null;
-        z = makeZone(readRegions(out, desk));
+        z = makeZone(readRegions(out, desk), state.splits[outName] || []);
         z.key = key; z.outputName = outName; z.desktopId = deskId;
         state.zones[key] = z;
     }
@@ -735,18 +804,17 @@ function getZone(outName, deskId, create) {
 function refreshRegions(zone) {
     var out = outputByName(zone.outputName), desk = desktopById(zone.desktopId);
     if (!out || !desk) return false;
-    var rects = readRegions(out, desk), sig = JSON.stringify(rects);
-    if (sig === zone.sig) return false;
-    var focus = zoneFocusedWindow(zone), wins = zoneWindows(zone);
-    var keep = rects.length === zone.slots.length;
-    if (keep) { zoneSetRects(zone, rects); return true; }
-    zone.slots = []; zoneSetRects(zone, rects);
-    zone.focusedSlot = largestSlot(zone.slots);
-    for (var i = 0; i < wins.length; i++) zoneAdd(zone, wins[i], zoneSlotFor(zone, wins[i], cfg.regionsNewWindow));
-    if (focus) zoneFocusWindow(zone, focus);
+    var base = readRegions(out, desk), rects = zoneDerive(base, state.splits[zone.outputName] || []);
+    if (JSON.stringify(rects) === zone.sig) return false;
+    zone.base = base;
+    zoneReseat(zone, rects);
     return true;
 }
 
+function wantedSig(z) {
+    var out = outputByName(z.outputName), desk = desktopById(z.desktopId);
+    return out && desk ? JSON.stringify(zoneDerive(readRegions(out, desk), state.splits[z.outputName] || [])) : z.sig;
+}
 function allContainers() {
     var out = [], k;
     for (k in state.strips) out.push(state.strips[k]);
@@ -871,7 +939,7 @@ function layoutAll(focusTarget) {
     if (state.released || !state.started) return;
     if (state.applying) { state.pendingLayout = true; return; }
     state.applying = true;
-    var before = workspace.activeWindow, target = focusTarget || null;
+    var before = workspace.activeWindow, target = focusTarget || null, infos = {}, orphans = [];
     try {
         var cur = workspace.currentDesktop, conts = allContainers();
         for (var ci = 0; ci < conts.length; ci++) {
@@ -893,6 +961,7 @@ function layoutAll(focusTarget) {
             }
             var entries = strip.kind === "zone" ? zoneLayout(strip, area, cfg) : computeLayout(strip, area, cfg);
             strip.lastLayout = entries;
+            for (var ei = 0; ei < entries.length; ei++) infos[wid(entries[ei].window)] = { rect: entries[ei].rect, visible: entries[ei].visible };
             var hide = [];
             for (var i = 0; i < entries.length; i++) {
                 var e = entries[i], w = e.window, id = wid(w);
@@ -910,8 +979,27 @@ function layoutAll(focusTarget) {
             if (!target && before && state.byWin[wid(before)] === strip.key)
                 target = entriesVisible(entries, before) ? before : containerFocused(strip);
         }
+        for (var oid in state.overlays) {
+            var ov = state.overlays[oid], ow = ov.w;
+            if (ow.deleted) { delete state.overlays[oid]; continue; }
+            var hostKey = ov.host.deleted ? undefined : state.byWin[wid(ov.host)];
+            if (hostKey === undefined) { orphans.push(ow); continue; }       // its host left the grid
+            var hostCont = containerByKey(hostKey), info = infos[wid(ov.host)];
+            if (!hostCont || hostCont.desktopId !== cur.id || !info || ow.fullScreen || state.interactive[oid]) continue;
+            if (info.visible) {
+                if (state.scriptMin[oid]) { delete state.scriptMin[oid]; setMinimized(ow, false); }
+                if (!ow.minimized) writeGeometry(ow, info.rect);
+            } else if (!ow.minimized) {
+                setMinimized(ow, true); state.scriptMin[oid] = true;
+            }
+        }
     } finally {
         state.applying = false;
+    }
+    for (var oi = 0; oi < orphans.length; oi++) {
+        delete state.overlays[wid(orphans[oi])];
+        if (!tile(orphans[oi])) continue;
+        state.pendingLayout = true;
     }
     if (target && !target.deleted && workspace.activeWindow !== target) {
         state.applying = true;
@@ -961,6 +1049,7 @@ function stripOf(w) { return contOf(w); }   // a strip or a zone: callers that n
 // Window moved desktop/output (or became tileable/untileable): redo its membership.
 function retile(w) {
     if (state.released) return;
+    delete state.overlays[wid(w)];   // moved / restored on its own: it is a normal tiled window from now on
     var old = contOf(w);
     var wasKey = old ? old.key : null;
     untile(w);
@@ -1091,6 +1180,12 @@ function wireWindow(w) {
         delete state.interactive[i];
         if (state.dragId === i) state.dragId = null;
         var strip = stripOf(w);
+        if (state.overlays[i] && rec) {
+            // dragged out from over its host: it floats where it was dropped; a resize snaps back
+            if (!rec.resizing) { delete state.overlays[i]; state.floating[i] = true; }
+            scheduleLayout();
+            return;
+        }
         if (!rec || !strip || state.released) { scheduleLayout(); return; }
         var cur = { x: g.x, y: g.y, width: g.width, height: g.height };
         if (rec.resizing) finishResize(w, strip, rec, cur);
@@ -1219,7 +1314,12 @@ function directionalMove(w, c, dir) {
     containerFocusWindow(c, w);
     var prev = c.kind === "zone" ? 0 : c.focusedColumn, moved = false, snapped = false;
     if (c.kind === "zone") {
-        moved = zoneMoveDir(c, dir);
+        // Meta+arrow only moves between regions: no reordering inside a stack, no hopping monitors
+        var to = zoneNeighbour(c, c.focusedSlot, dir, false);
+        moved = to >= 0 ? zoneMoveToSlot(c, to) : false;
+        forgetRects(c);
+        layoutAll(w);
+        return;
     } else if (!area) {
         moved = false;
     } else if (!dirIsMain(c, dir)) {
@@ -1377,8 +1477,79 @@ function finishMove(w, strip, rec, cur) {
     reveal(target, at2);
     layoutAll(w);
 }
+// A window that is NOT in any container but shares a tiled window's cell: it is written the
+// host's rectangle on every layout, is shown/hidden with the host, and nothing else about the
+// layout (columns, slots, scroll) changes. KWin puts the newest window on top; activating the
+// host raises it again.
+//
+// Which window a new one opens over: a window of the same app that is on screen, else the focused
+// tiled window of that monitor, else any window on screen. Returns null when there is none (an
+// empty monitor, a floating window, a dialog): the window then tiles normally.
+function overlayTarget(w) {
+    if (!cfg.newWindowOverlay || state.released || !state.started || state.floating[wid(w)] || !isTileable(w)) return null;
+    var out = w.output.name;
+    if (!tilingOutput(out) || !outputByName(out)) return null;
+    var desk = w.desktops[0].id;
+    var c = outputMode(out) === "regions" ? getZone(out, desk, false) : getStrip(out, desk, false);
+    if (!c || c.desktopId !== workspace.currentDesktop.id) return null;
+    var shown = {};
+    (c.lastLayout || []).forEach(function (e) { if (e.visible && !e.window.minimized && !e.window.deleted) shown[wid(e.window)] = e.window; });
+    var cands = windowsOf(c).filter(function (x) { return shown[wid(x)] && x !== w; });
+    if (!cands.length) return null;
+    var focus = containerFocused(c), app = String(w.resourceClass || "");
+    var same = cands.filter(function (x) { return String(x.resourceClass || "") === app; });
+    if (same.length) return same.indexOf(focus) >= 0 ? focus : same[0];
+    return cands.indexOf(focus) >= 0 ? focus : cands[0];
+}
+
+function overlaysOf(host) {
+    var out = [];
+    for (var id in state.overlays) if (state.overlays[id].host === host) out.push(state.overlays[id]);
+    return out;
+}
+
+// The overlay becomes a real member of the grid, next to / under its host.
+function unoverlay(ow) {
+    var id = wid(ow), o = state.overlays[id];
+    if (!o) return false;
+    delete state.overlays[id];
+    var c = contOf(o.host);
+    if (!c) { tile(ow); return true; }
+    if (c.kind === "zone") {
+        var at = zoneFind(c, o.host);
+        zoneAdd(c, ow, at ? at.s : c.focusedSlot);
+    } else {
+        var at2 = stripFind(c, o.host);
+        stripInsertColumn(c, ow, at2 ? at2.c + 1 : c.columns.length, cfg.defaultWidth);
+        reveal(c, c.focusedColumn);
+    }
+    state.byWin[id] = c.key;
+    forgetRects(c);
+    layoutAll(ow);
+    return true;
+}
+
+// `old` leaves its cell and `nw` takes it.
+function replaceInContainer(c, old, nw) {
+    if (c.kind === "zone") {
+        var z = zoneFind(c, old);
+        if (z) c.slots[z.s].windows[z.i] = nw;
+    } else {
+        var r = stripFind(c, old);
+        if (r) { c.columns[r.c].windows[r.r] = nw; if (c.weights[wid(old)] !== undefined) { c.weights[wid(nw)] = c.weights[wid(old)]; delete c.weights[wid(old)]; } }
+    }
+    state.byWin[wid(nw)] = c.key;
+    delete state.byWin[wid(old)];
+}
+
 function onWindowAdded(w) {
     wireWindow(w);
+    var host = overlayTarget(w);
+    if (host) {
+        state.overlays[wid(w)] = { w: w, host: host };
+        layoutAll(w);
+        return;
+    }
     var s = tile(w);
     if (s) layoutAll(w);
     else scheduleLayout();
@@ -1386,6 +1557,17 @@ function onWindowAdded(w) {
 
 function onWindowRemoved(w) {
     var id = wid(w), strip = stripOf(w), wasActive = state.lastActive === id;
+    var asOverlay = state.overlays[id] || null;
+    delete state.overlays[id];
+    var heirs = overlaysOf(w), heir = null;
+    if (strip && heirs.length) {
+        // the host closed with windows over it: the newest one takes its cell
+        heir = heirs[heirs.length - 1].w;
+        delete state.overlays[wid(heir)];
+        replaceInContainer(strip, w, heir);
+        for (var hi = 0; hi < heirs.length - 1; hi++) heirs[hi].host = heir;
+        strip = null;
+    }
     if (strip) {
         if (strip.kind === "zone") zoneRemove(strip, w); else stripRemove(strip, w);
         delete state.byWin[id];
@@ -1394,7 +1576,15 @@ function onWindowRemoved(w) {
     delete state.interactive[id]; delete state.wired[id]; delete state.floating[id];
     delete state.geomDirty[id]; delete state.fixes[id];
     if (state.dragId === id) state.dragId = null;
-    if (strip) {
+    if (heir) {
+        forgetRects(contOf(heir));
+        layoutAll(wasActive ? heir : null);
+    } else if (asOverlay) {
+        // an overlay closed: focus goes back to what it was over
+        var hc = contOf(asOverlay.host);
+        layoutAll(wasActive ? asOverlay.host : null);
+        if (wasActive && hc) scheduleRefocus(hc.key);
+    } else if (strip) {
         if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
         layoutAll(wasActive ? containerFocused(strip) : null);
         if (wasActive) scheduleRefocus(strip.key);
@@ -1402,7 +1592,6 @@ function onWindowRemoved(w) {
         scheduleLayout();
     }
 }
-
 function onWindowActivated(w) {
     state.lastActive = w ? wid(w) : null;
     if (!w || state.released) return;
@@ -1419,7 +1608,9 @@ function onWindowActivated(w) {
 }
 // ---------------------------------------------------------------- Commands
 function currentContainer() {
-    var aw = workspace.activeWindow, s = aw ? stripOf(aw) : null;
+    var aw = workspace.activeWindow;
+    if (aw && state.overlays[wid(aw)]) aw = state.overlays[wid(aw)].host;   // focus keys move on from what it sits over
+    var s = aw ? stripOf(aw) : null;
     if (s) { containerFocusWindow(s, aw); return s; }   // commands act on what is really focused
     var out = workspace.activeScreen, name = null;
     if (out && tilingOutput(out.name)) name = out.name;
@@ -1501,7 +1692,7 @@ function releaseAll() {
         var w = list[i];
         if (state.scriptMin[wid(w)]) { delete state.scriptMin[wid(w)]; setMinimized(w, false); n++; }
     }
-    state.strips = {}; state.zones = {}; state.byWin = {};
+    state.strips = {}; state.zones = {}; state.byWin = {}; state.overlays = {};
     sendReport(true);
     return n;
 }
@@ -1536,6 +1727,7 @@ function snapDir(dir) {
         callDBus("org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component", "invokeShortcut", QUICK_TILE[dir]);
         return { ok: true, passed: true };
     }
+    if (c.kind !== "zone" && !cfg.arrowKeysScrollStrips) return { ok: true, changed: false };   // scrolling monitors: leave it
     directionalMove(w, c, dir);
     return { ok: true };
 }
@@ -1575,6 +1767,12 @@ var COMMANDS = {
     "float-toggle": function () {
         var w = workspace.activeWindow;
         if (!w) return { ok: false, error: "no active window" };
+        if (state.overlays[wid(w)]) {                       // over a tiled window: it just floats there
+            delete state.overlays[wid(w)];
+            state.floating[wid(w)] = true;
+            layoutAll(w);
+            return { ok: true, floating: true };
+        }
         var strip = stripOf(w);
         if (strip) {
             state.floating[wid(w)] = true;
@@ -1613,6 +1811,18 @@ var COMMANDS = {
             return zoneMoveToSlot(z, (Number(arg) | 0) - 1);
         });
     },
+    // regions mode: cut the focused tile into a top and a bottom half, or merge it back
+    "split-region": function () {
+        var c = currentContainer();
+        if (!c || c.kind !== "zone") return { ok: false, error: "not a regions monitor" };
+        var slot = c.slots[c.focusedSlot];
+        if (!slot) return { ok: false, error: "no region" };
+        var list = (state.splits[c.outputName] || []).slice(), at = list.indexOf(slot.rect.key);
+        if (at >= 0) list.splice(at, 1); else list.push(slot.rect.key);
+        if (list.length) state.splits[c.outputName] = list; else delete state.splits[c.outputName];
+        layoutAll(zoneFocusedWindow(c));
+        return { ok: true, split: at < 0 };
+    },
     // flip an output between scrolling columns and fixed regions (arg: output name, else the focused one)
     "toggle-mode": function (arg) {
         var name = arg ? String(arg) : null;
@@ -1644,11 +1854,21 @@ var COMMANDS = {
 
 var IDLE_OK = { "config": 1, "dump": 1, "windows": 1, "release-all": 1 };
 
+// Commands that move or resize the focused window make an overlay a real member of the grid first.
+var PROMOTES = { "move-column-left": 1, "move-column-right": 1, "move-window-up": 1, "move-window-down": 1,
+                 "consume-left": 1, "consume-right": 1, "expel": 1, "consume-or-expel-left": 1,
+                 "consume-or-expel-right": 1, "cycle-width": 1, "maximize-column": 1, "send-to-slot": 1,
+                 "snap-left": 1, "snap-right": 1, "snap-up": 1, "snap-down": 1 };
+
 function runCommand(name, arg) {
     var fn = COMMANDS[name];
     if (!fn) return { ok: false, error: "unknown command" };
     if (!state.started && !IDLE_OK[name]) return { ok: false, error: "not configured yet" };
-    try { return fn(arg) || { ok: true }; }
+    try {
+        var aw = workspace.activeWindow;
+        if (PROMOTES[name] && aw && state.overlays[wid(aw)]) unoverlay(aw);
+        return fn(arg) || { ok: true };
+    }
     catch (e) { log("ERROR in command " + name + ": " + e); return { ok: false, error: String(e) }; }
 }
 
@@ -1671,6 +1891,7 @@ var SHORTCUTS = [
     { text: "Maximize column", key: "Meta+Alt+F", cmd: "maximize-column" },
     { text: "Center column", key: "Meta+Alt+C", cmd: "center-column" },
     { text: "Toggle floating", key: "Meta+Alt+V", cmd: "float-toggle" },
+    { text: "Split / merge the focused region (top and bottom)", key: "Ctrl+Meta+S", cmd: "split-region" },
     { text: "Snap left", key: "Meta+Left", cmd: "snap-left" },
     { text: "Snap right", key: "Meta+Right", cmd: "snap-right" },
     { text: "Snap up", key: "Meta+Up", cmd: "snap-up" },
@@ -1705,6 +1926,12 @@ function numList(v, maxItems) {
     return out;
 }
 
+function sortObj(o) {
+    var out = {}, ks = Object.keys(o).sort();
+    for (var i = 0; i < ks.length; i++) out[ks[i]] = o[ks[i]].slice().sort();
+    return out;
+}
+
 // Validates field by field (the bridge validates too); unknown or bad fields are ignored.
 function applyConfig(c) {
     if (!c || typeof c !== "object") return false;
@@ -1722,6 +1949,18 @@ function applyConfig(c) {
     }
     if (typeof c.portraitDockStrip === "number" && c.portraitDockStrip >= 0 && c.portraitDockStrip <= 200)
         cfg.portraitDockStrip = Math.round(c.portraitDockStrip);
+    if (c.regionSplits && typeof c.regionSplits === "object" && !Array.isArray(c.regionSplits)) {
+        var sp = {}, n = 0;
+        for (var on in c.regionSplits) {
+            var keys = strList(c.regionSplits[on], 16, 40);
+            if (!keys || ++n > 8) continue;
+            keys = keys.filter(function (k) { return /^-?[0-9.]+(,-?[0-9.]+){3}$/.test(k); });
+            if (keys.length) sp[on] = keys.sort();
+        }
+        if (JSON.stringify(sortObj(sp)) !== JSON.stringify(sortObj(state.splits))) state.splits = sp;
+    }
+    if (typeof c.newWindowOverlay === "boolean") cfg.newWindowOverlay = c.newWindowOverlay;
+    if (typeof c.arrowKeysScrollStrips === "boolean") cfg.arrowKeysScrollStrips = c.arrowKeysScrollStrips;
     var ro = strList(c.regionOutputs, 8, 64);
     if (ro) cfg.regionOutputs = ro;
     if (c.regionsNewWindow === "smart" || c.regionsNewWindow === "focused") cfg.regionsNewWindow = c.regionsNewWindow;
@@ -1761,6 +2000,8 @@ function reconcile() {
 function buildReport() {
     var rep = { type: "tiling", v: 1, enabled: state.started && !state.released, outputs: {} };
     if (!rep.enabled) return rep;
+    rep.splits = {};
+    for (var spo in state.splits) if (state.splits[spo].length) rep.splits[spo] = state.splits[spo].slice().sort();
     var cur = workspace.currentDesktop, active = workspace.activeWindow;
     for (var key in state.strips) {
         var strip = state.strips[key];
@@ -1858,7 +2099,7 @@ function init() {
         if (state.released || !state.started || state.applying) return;
         for (var k in state.zones) {
             var z = state.zones[k], out = outputByName(z.outputName), desk = desktopById(z.desktopId);
-            if (out && desk && JSON.stringify(readRegions(out, desk)) !== z.sig) { layoutAll(null); return; }
+            if (out && desk && wantedSig(z) !== z.sig) { layoutAll(null); return; }
         }
     }));
     regionsTimer.start();
