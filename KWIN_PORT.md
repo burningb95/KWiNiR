@@ -565,7 +565,7 @@ work on KWin; recorder is ported to Spectacle), `emoji/emoji-data.sh` and `setup
 
 ## Scrolling tiling (KWin script) (2026-10-26)
 
-niri-style columns on KWin, off by default (`tiling.enable`). Plan and decisions:
+niri-style columns on KWin, on by default (`tiling.enable`). Plan and decisions:
 `~/.local/share/Fancy-Floating-Bar/docs/TILING_PLAN.md`; every measured KWin fact:
 `docs/REFERENCE.md` › *KWin scripting facts for tiling*.
 
@@ -574,11 +574,23 @@ columns, each with one or more stacked windows. The focused column is always scr
 KWin will not park a window fully off the monitors (it clamps to keep a sliver visible), so a
 column that is not **fully** inside the viewport is **minimized** and restored when scrolled back;
 only windows the tiler minimized are ever restored by it. Keys are KWin global shortcuts the
-script registers (Settings › Advanced › Reset & shortcuts lists them). Dialogs, transients,
+script registers (Settings › Tiling › Keys lists them). Dialogs, transients,
 fixed-size windows, all-desktop windows, layer-shell surfaces and the `tiling.floatClasses` list
-never tile; dragging a tiled window floats it, drag-resizing sets its column width, KWin's own
-maximize means *maximize this column*, and a window that starts maximized is un-maximized when
-taken over. A window moved to another desktop or monitor re-tiles there (or floats if that
+never tile; KWin's own maximize means *maximize this column*, and a window that starts maximized
+is un-maximized when taken over. **Portrait monitors run transposed** (`strip.vertical`): the strip
+scrolls top to bottom and a column's windows sit side by side; the pure layout is written in main
+axis / cross axis so one code path serves both, and the directional commands follow the screen.
+
+**Mouse (2026-10-26, round 2).** *Resize:* the border shared with a fully visible neighbour
+moves — the neighbour gives up exactly what the dragged window gains (live, through
+`interactiveMoveResizeStepped`), so the pair keeps its span and nothing leaves the viewport
+(before this, widening one column pushed its neighbour partly off-screen, where it was
+minimized: "it grabs the edge and the one it expands over minimizes"). An outer edge resizes
+just its column; borders between stacked windows trade height (`strip.weights`, reset whenever a
+stack's members change); an outer edge of a stack snaps back. *Move:* a dragged window re-enters
+the strip in the slot its centre falls in, on the monitor it ended up on (no longer floats; a
+monitor that doesn't tile floats it there; < 6 px snaps back). *Reverts:* a client that resizes
+or moves itself off its slot is put back after 250 ms, at most 3 times per 5 s. A window moved to another desktop or monitor re-tiles there (or floats if that
 monitor doesn't tile). If a monitor goes away its windows join the first tiling monitor.
 
 **Pieces and patches** (all marked `// KWin port:` or new files; nothing upstream was modified
@@ -593,7 +605,9 @@ beyond the lines below):
 | `modules/common/Config.qml` | `tiling.*` options |
 | `shell.qml` | IPC target `tiling` |
 | `modules/pill/PillTiling.qml`, `Pill.qml` | **New** column minimap beside the workspace dots |
-| `modules/settings/AdvancedConfig.qml` | Tiling section + shortcut list |
+| `modules/settings/TilingConfig.qml`, `SettingsPageRegistry.qml` | **New** Settings › Tiling page (page 29; layout / apps / keys). Its Layout card borrows the shape of upstream `NiriConfig` › Layout (gaps, focus centring, single-column options, struts) but writes `tiling.*`, not niri's config |
+| `modules/pill/PillSettings.qml`, `GlyphIcon.qml` | the settings menu's "Workspaces" entry (upstream's niri edge-strip page) now opens Tiling; new `columns` glyph |
+| `TILING_CHEATSHEET.md` | **New** keys / mouse / settings reference |
 
 **Keys** (checked against kglobalaccel; the three bindings that were in the way were released
 with Camron's OK — `REVERT-tiling-keys.sh` in `~/.local/share/Fancy-Floating-Bar` gives them back):
@@ -608,9 +622,10 @@ Released: Meta+Alt+K and Meta+Alt+L (keyboard-layout switching), Meta+Alt+R (scr
   focused window moves KWin's focus, which the tiler corrects. A script cannot turn the effect
   off for itself.
 - A new window only tiles if it opens on a tiling monitor.
-- Tiled-window drag-resize and drag-move, and the real key presses, are not exercised by the
-  automated tests (a session can't click or type) — they rely on code paths covered by the fake
-  KWin tests.
+- Real drags and key presses are not exercised by the automated tests (a session can't click or
+  type): drag resize/move are covered by the fake-KWin tests, which emit KWin's
+  `interactiveMoveResizeStarted/Stepped/Finished`; the signals and the `window.resize` flag were
+  confirmed to exist on KWin 6.8.1.
 - If the bar dies uncleanly while columns are minimized they stay minimized; the next start
   does not adopt minimized windows. Recovery: `sh tools/tiling-rescue.sh` (un-minimizes every
   window, pulls overhanging ones back on-screen, unregisters the tiler's shortcuts).
@@ -618,7 +633,7 @@ Released: Meta+Alt+K and Meta+Alt+L (keyboard-layout switching), Meta+Alt+R (scr
   persistent trace is the `KWiNiR Tiling: *` entries in `kglobalshortcutsrc`, which the bridge
   removes whenever tiling is off.
 
-**Verification.** `tools/tiling-test.mjs` (layout, 27), `tiling-glue-test.mjs` (fake KWin: 23,
-incl. hotplug and desktops), `tiling-bridge-test.py` (validators, 13), `tiling-live-test.py` and
+**Verification.** `tools/tiling-test.mjs` (layout, 34), `tiling-glue-test.mjs` (fake KWin: 38,
+incl. hotplug, desktops, drag resize/move, portrait), `tiling-bridge-test.py` (validators, 14), `tiling-live-test.py` and
 `tiling-live-multi.py` (real KWin, throwaway windows), `tiling-e2e-test.py` (the staged bar on a
 temp config: IPC, bridge, shortcuts, release on exit). All in `~/.local/share/Fancy-Floating-Bar/tools/`.

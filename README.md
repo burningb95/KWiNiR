@@ -31,9 +31,10 @@ Not affiliated with the iNiR project.
   step beneath it and give it the keyboard, then return
 - Caffeine through the Wayland idle-inhibit protocol, respected by PowerDevil
 - Pill power menu: lock, logout, reboot, shutdown through Plasma's session manager
-- **Scrolling tiling** (off by default): niri-style columns for your windows through a KWin
-  script the bridge loads at runtime, with a column minimap in the pill and keys listed under
-  Settings › Advanced › *Tiling* / *Reset & shortcuts*. See *Scrolling tiling* below
+- **Scrolling tiling** (on by default): niri-style columns for your windows through a KWin
+  script the bridge loads at runtime (portrait monitors stack top to bottom), with a column
+  minimap in the pill, a Settings › *Tiling* page and a cheat sheet
+  ([`TILING_CHEATSHEET.md`](TILING_CHEATSHEET.md)). See *Scrolling tiling* below
 
 Not available: anything needing a window list (KWin exposes no foreign-toplevel protocol
 to Quickshell) and per-output workspaces.
@@ -81,8 +82,10 @@ For the sidebar avatar, put any image at `~/.config/pillbar/avatar.png` (or `.jp
 
 ### Scrolling tiling
 
-Off until you turn it on (Settings › Advanced › Tiling, or `ipc call tiling enable`). Turning
-it on tiles the windows that are open — or only the classes in *Only tile these apps*. Columns
+On by default (Settings › Tiling, the pill's settings menu, or `ipc call tiling disable`).
+It tiles every tileable window on every monitor — or only the classes in *Only tile these apps*.
+Drag a border to resize (the neighbour gives way), drag a title bar to reorder or move a window
+to another monitor. Keys and mouse: [`TILING_CHEATSHEET.md`](TILING_CHEATSHEET.md). Columns
 scrolled out of view are minimized (KWin won't park a window off the monitors). It registers
 KWin global shortcuts (`Meta+Alt+H/L/J/K`, `Ctrl+Alt+arrows`, …, listed in Settings), and
 turning tiling off unregisters them and restores every window. **If anything goes wrong:**
@@ -162,9 +165,12 @@ Every page has **Reset** at the bottom (click twice): *my setup* restores
 | `sidebar.widgets.spacers` | `[]` | blank spacers, `"spacer-N=<px>"`, placed via `widgetOrder` |
 | `sidebar.widgets.controlsCard.{showEasyEffects,showCaffeine}` | `true`, `true` | extra Controls-card toggles |
 | `sidebar.right.avatarPath` | `""` | bar-only avatar; `""` = `~/.config/pillbar/avatar.*` |
-| `tiling.enable` | `false` | scrolling tiling on/off (restarts the bridge helper) |
-| `tiling.outputs` | `["@primary"]` | monitors that tile; `@primary` = KDE's first-ranked, `@all` = every monitor |
-| `tiling.{gap,defaultWidth,presetWidths,center,bottomMargin}` | `12`, `0.5`, `[0.333,0.5,0.667]`, `"on-overflow"`, `0` | layout |
+| `tiling.enable` | `true` | scrolling tiling on/off (restarts the bridge helper) |
+| `tiling.outputs` | `["@all"]` | monitors that tile; `@primary` = KDE's first-ranked, `@all` = every monitor |
+| `tiling.{gap,defaultWidth,presetWidths,center}` | `12`, `0.5`, `[0.333,0.5,0.667]`, `"on-overflow"` | layout |
+| `tiling.struts.{left,right,top,bottom}` | `0` | px kept clear on each edge of every tiling monitor (niri's struts) |
+| `tiling.portraitVertical` · `tiling.portraitDockStrip` | `true` · `8` | portrait monitors stack top to bottom · px kept clear at their bottom edge for a dock |
+| `tiling.{centerSingle,expandSingle}` | `false`, `false` | a lone column centred / filling the area |
 | `tiling.onlyClasses` | `[]` | empty = every tileable window, else only these window classes |
 | `tiling.floatClasses` | spectacle, krunner, polkit, kwallet, steam games, … | classes that never tile (`*` = prefix) |
 | `tiling.shortcuts` | `true` | register the tiling keys |

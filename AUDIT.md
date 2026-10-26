@@ -340,8 +340,8 @@ See *Summary → Needs approval — recommendations* above.
 
 ## Tiling additions (2026-10-26) — new attack surface, reviewed
 
-New and changed, all behind `tiling.enable` (off by default). Nothing here runs unless the bar
-starts the helper with `--tiling`.
+New and changed, all behind `tiling.enable` (on by default since 2026-10-26, at the owner's request). Nothing
+here runs unless the bar starts the helper with `--tiling`.
 
 | Surface | What it is | Controls |
 |---|---|---|
