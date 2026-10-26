@@ -591,6 +591,19 @@ stack's members change); an outer edge of a stack snaps back. *Move:* a dragged 
 the strip in the slot its centre falls in, on the monitor it ended up on (no longer floats; a
 monitor that doesn't tile floats it there; < 6 px snaps back). *Reverts:* a client that resizes
 or moves itself off its slot is put back after 250 ms, at most 3 times per 5 s.
+*Fixed regions (2026-10-26, round 4):* a monitor can use `zone`s instead of strips. The slots are
+the leaf tiles of KWin's own tile layout for (output, desktop), read through
+`workspace.rootTile(output, desktop)` (`leafRects`: fractions of the root, nested layouts
+supported) and re-read every 1.5 s, so Meta+T edits apply live; the tiler never writes
+`window.tile` or `kwinrc`, it only positions windows itself. A slot holds a stack of windows, all
+visible, split evenly; there is no scrolling and no minimizing. New windows: `zoneSlotFor`
+(`smart`: slot holding the same app, else largest empty slot, else focused; or `focused`). Per
+output mode = `tiling.regionOutputs` unless `toggle-mode` (Meta+Alt+G) flipped it at runtime
+(`state.modeFlip`, not persisted); changing it migrates the windows between containers
+(`migrateModes`). Drag-resize in a slot snaps back, drops pick the slot under the window, quick
+tile: see above. Same-app *cycling* (several windows of one app sharing one slot,
+one shown) was asked for and then dropped: same-app windows stack. Verified by the fake-KWin
+tests; the live check is below.
 *Modifier drag floats:* a move that starts inside the window rather than on its title bar
 (`workspace.cursorPos` vs `clientGeometry`; KWin exposes no keyboard-modifier API) floats the
 window; resizes never float. *Quick tile:* KWin's Meta+arrow keys set `window.tile`; on a tiled
@@ -641,7 +654,7 @@ Released: Meta+Alt+K and Meta+Alt+L (keyboard-layout switching), Meta+Alt+R (scr
   persistent trace is the `KWiNiR Tiling: *` entries in `kglobalshortcutsrc`, which the bridge
   removes whenever tiling is off.
 
-**Verification.** `tools/tiling-test.mjs` (layout, 34), `tiling-glue-test.mjs` (fake KWin: 45,
-incl. hotplug, desktops, drag resize/move, portrait), `tiling-bridge-test.py` (validators, 14), `tiling-live-test.py` and
+**Verification.** `tools/tiling-test.mjs` (layout and regions model, 39), `tiling-glue-test.mjs` (fake KWin: 55,
+incl. hotplug, desktops, drag resize/move, portrait), `tiling-bridge-test.py` (validators, 17), `tiling-live-test.py` and
 `tiling-live-multi.py` (real KWin, throwaway windows), `tiling-e2e-test.py` (the staged bar on a
 temp config: IPC, bridge, shortcuts, release on exit). All in `~/.local/share/Fancy-Floating-Bar/tools/`.

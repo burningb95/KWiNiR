@@ -9,6 +9,24 @@ its own strip.
 full-width **row**, and windows that share a row sit side by side. Everything below says
 "column"; read it as "row" on a portrait monitor.
 
+## Two modes per monitor
+
+- **Scrolling columns** (default): everything above. A new window opens as a new column, the
+  view scrolls to it and columns that no longer fit are minimized.
+- **Fixed regions**: nothing scrolls and nothing is minimized. The monitor is divided into the
+  slots of **KDE's own tile layout for it** (the 25 % | 50 % | 25 % you set up with `Meta+T`);
+  every window sits in a slot, and a slot holds a stack of windows split evenly top to bottom.
+  - A new window goes to the slot already holding a window of the same app, otherwise to the
+    largest empty slot, otherwise to the focused slot (Settings › Tiling › Regions can switch
+    that to "always the focused slot").
+  - Edit the slots with `Meta+T` (or Settings › Tiling › Regions › *Open KDE's tile editor*);
+    the windows follow within a couple of seconds. Slots are numbered left to right (top to
+    bottom when the layout is stacked).
+  - Dragging a window drops it into the slot under it; dragging a border snaps back (the
+    borders belong to the tile editor); `Meta`-drag still floats.
+  - Choose which monitors start in regions mode under Settings › Tiling › Regions, or flip the
+    focused monitor on the spot with `Meta+Alt+G` (windows keep their order).
+
 ## Keys
 
 `Meta` = Super. All of these are KDE global shortcuts (System Settings › Shortcuts › KWin,
@@ -41,6 +59,15 @@ named *KWiNiR Tiling: …*), registered only while tiling is on.
 | `Meta+Shift+←/→` (move to previous / next screen) | KWin sends the window to that monitor and the tiler slots it in next to that monitor's focused column |
 
 On a floating window, or one on a monitor that doesn't tile, these behave as KDE normally does.
+
+### Regions mode only
+
+| Keys | Does |
+|---|---|
+| `Meta+Alt+1` … `6` | send the focused window to region 1 … 6 (bottom of that slot's stack) |
+| `Meta+Alt+G` | flip the focused monitor between scrolling columns and fixed regions |
+| the move / focus keys above | `H`/`L`: next slot left / right; `J`/`K`: down / up the stack, then the slot above / below. `Shift` moves the window the same way |
+| `Meta+←/→/↑/↓` | same as the `Shift` moves; past the last slot it hops to the next monitor and lands in the slot nearest the edge it came in from |
 
 ### Size and scroll
 
@@ -81,6 +108,7 @@ To tile only some apps, list them under *Only tile these apps*.
 |---|---|
 | Tile windows | the master switch; off gives every window back |
 | Monitors | main only, or every monitor (`@primary` / `@all`: follow KDE's ranking, not cable names) |
+| Regions | which monitors use fixed regions, where new windows go, a button for KDE's tile editor |
 | Gap size | `0` = edge to edge |
 | New column width | the width a new window opens at |
 | Focus behavior | when focusing scrolls the column to the middle: never / on overflow / always |
@@ -100,7 +128,8 @@ qs -c pillbar ipc call tiling commandArg focus-column 2
 
 Commands: `focus-left/right/up/down`, `move-column-left/right`, `move-window-up/down`,
 `consume-left/right`, `expel`, `consume-or-expel-left/right`, `cycle-width`, `maximize-column`,
-`center-column`, `float-toggle`, `adopt [class]`, `focus-column N`, `relayout`.
+`center-column`, `float-toggle`, `adopt [class]`, `focus-column N`, `relayout`, `send-to-slot N`,
+`toggle-mode [monitor]`.
 
 ## If something goes wrong
 

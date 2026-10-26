@@ -85,7 +85,9 @@ For the sidebar avatar, put any image at `~/.config/pillbar/avatar.png` (or `.jp
 On by default (Settings › Tiling, the pill's settings menu, or `ipc call tiling disable`).
 It tiles every tileable window on every monitor — or only the classes in *Only tile these apps*.
 Drag a border to resize (the neighbour gives way), drag a title bar to reorder or move a window
-to another monitor. Keys and mouse: [`TILING_CHEATSHEET.md`](TILING_CHEATSHEET.md). Columns
+to another monitor. A monitor can instead use **fixed regions** — the slots of KDE's own tile
+layout (Meta+T), windows stacking inside a slot, nothing scrolling or minimized (Settings › Tiling
+› Regions, `Meta+Alt+G`). Keys and mouse: [`TILING_CHEATSHEET.md`](TILING_CHEATSHEET.md). Columns
 scrolled out of view are minimized (KWin won't park a window off the monitors). It registers
 KWin global shortcuts (`Meta+Alt+H/L/J/K`, `Ctrl+Alt+arrows`, …, listed in Settings), and
 turning tiling off unregisters them and restores every window. **If anything goes wrong:**
@@ -170,6 +172,7 @@ Every page has **Reset** at the bottom (click twice): *my setup* restores
 | `tiling.{gap,defaultWidth,presetWidths,center}` | `12`, `0.5`, `[0.333,0.5,0.667]`, `"on-overflow"` | layout |
 | `tiling.struts.{left,right,top,bottom}` | `0` | px kept clear on each edge of every tiling monitor (niri's struts) |
 | `tiling.portraitVertical` · `tiling.portraitDockStrip` | `true` · `8` | portrait monitors stack top to bottom · px kept clear at their bottom edge for a dock |
+| `tiling.regionOutputs` · `tiling.regionsNewWindow` | `[]` · `"smart"` | monitors that use fixed regions · where a new window goes (`smart` / `focused`) |
 | `tiling.{centerSingle,expandSingle}` | `false`, `false` | a lone column centred / filling the area |
 | `tiling.onlyClasses` | `[]` | empty = every tileable window, else only these window classes |
 | `tiling.floatClasses` | spectacle, krunner, polkit, kwallet, steam games, … | classes that never tile (`*` = prefix) |
