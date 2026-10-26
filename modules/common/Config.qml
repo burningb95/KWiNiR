@@ -1329,7 +1329,8 @@ Singleton {
             // bridge). Off by default: enabling it tiles the windows already open.
             property JsonObject tiling: JsonObject {
                 property bool enable: false
-                // Output names that tile; "@primary" = KWin's priority-1 output (survives cable swaps).
+                // Output names that tile; "@primary" = KWin's priority-1 output, "@all" = every monitor
+                // (both survive cable swaps).
                 property list<string> outputs: ["@primary"]
                 property int gap: 12                      // px, between windows and around the strip
                 property real defaultWidth: 0.5           // width of a new column (fraction of the screen)

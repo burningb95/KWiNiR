@@ -30,9 +30,25 @@ ContentPage {
         options: [
             { displayName: Translation.tr("Color"), icon: "colors", value: "color" },
             { displayName: Translation.tr("Resources"), icon: "memory_alt", value: "resources" },
+            // KWin port: scrolling tiling (helpers/kwinir-tiling.js).
+            { displayName: Translation.tr("Tiling"), icon: "view_column", value: "tiling" },
             // KWin port: global reset + the shortcuts this port registers.
             { displayName: Translation.tr("Reset & shortcuts"), icon: "restart_alt", value: "reset" }
         ]
+    }
+
+    // KWin port: tiling class lists (only-these-apps / never-tile). Written on user action only.
+    function tilingListAdd(key: string, cls: string): void {
+        const v = String(cls).trim()
+        const cur = Array.from(Config.options?.tiling?.[key] ?? [])
+        if (!/^[A-Za-z0-9._@+*-]{1,100}$/.test(v) || cur.includes(v))
+            return
+        cur.push(v)
+        Config.setNestedValue("tiling." + key, cur)
+    }
+
+    function tilingListRemove(key: string, cls: string): void {
+        Config.setNestedValue("tiling." + key, Array.from(Config.options?.tiling?.[key] ?? []).filter(c => c !== cls))
     }
 
     function setCavaValue(path, value, regenerateStandalone): void {
@@ -503,6 +519,167 @@ ContentPage {
                 StyledToolTip {
                     text: Translation.tr("Poll GPU usage and temperature. Disable on hybrid laptops to keep the dGPU asleep — also pins Qt to the iGPU on next restart.")
                 }
+            }
+        }
+    }
+        }
+    }
+
+    // KWin port: scrolling tiling settings. New section; everything writes to tiling.* and the
+    // bridge pushes it to the running tiler without a restart (only enable restarts the helper).
+    SettingsTaskLoader {
+        requested: root.activeSection === "tiling"
+        sourceComponent: Component {
+    SettingsCardSection {
+        settingsTaskSection: "tiling"
+        expanded: true
+        icon: "view_column"
+        title: Translation.tr("Scrolling tiling")
+
+        SettingsGroup {
+            ConfigSwitch {
+                buttonIcon: "view_column"
+                text: Translation.tr("Tile windows in scrolling columns")
+                checked: Config.options?.tiling?.enable ?? false
+                onCheckedChanged: Config.setNestedValue("tiling.enable", checked)
+                StyledToolTip { text: Translation.tr("niri-style columns on KWin. Turning it on tiles the windows already open (or only the apps listed below); turning it off gives every window back. Columns scrolled out of view are minimized.") }
+            }
+            StyledText {
+                Layout.fillWidth: true
+                visible: !(Config.options?.tiling?.enable ?? false)
+                text: Translation.tr("Off. Nothing about your windows changes until you turn this on.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                wrapMode: Text.WordWrap
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Monitors")
+                ConfigSelectionArray {
+                    currentValue: (Array.from(Config.options?.tiling?.outputs ?? ["@primary"]).includes("@all")) ? "@all" : "@primary"
+                    onSelected: newValue => Config.setNestedValue("tiling.outputs", [newValue])
+                    options: [
+                        { displayName: Translation.tr("Main monitor only"), icon: "monitor", value: "@primary" },
+                        { displayName: Translation.tr("Every monitor"), icon: "monitor_weight", value: "@all" }
+                    ]
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("\"Main monitor\" is the one KDE ranks first (System Settings › Display), so it keeps working if the cables move. A window dragged to a monitor that doesn't tile floats.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Layout")
+                ConfigSpinBox {
+                    icon: "padding"
+                    text: Translation.tr("Gap between windows (px)")
+                    value: Config.options?.tiling?.gap ?? 12
+                    from: 0
+                    to: 60
+                    stepSize: 2
+                    onValueChanged: Config.setNestedValue("tiling.gap", value)
+                }
+                ConfigSpinBox {
+                    icon: "width"
+                    text: Translation.tr("New column width (% of the screen)")
+                    value: Math.round((Config.options?.tiling?.defaultWidth ?? 0.5) * 100)
+                    from: 20
+                    to: 100
+                    stepSize: 5
+                    onValueChanged: Config.setNestedValue("tiling.defaultWidth", value / 100)
+                }
+                ConfigSpinBox {
+                    icon: "vertical_align_bottom"
+                    text: Translation.tr("Keep the bottom edge clear (px) — for a dock")
+                    value: Config.options?.tiling?.bottomMargin ?? 0
+                    from: 0
+                    to: 300
+                    stepSize: 10
+                    onValueChanged: Config.setNestedValue("tiling.bottomMargin", value)
+                    StyledToolTip { text: Translation.tr("Windows stop this far above the bottom of a tiling monitor. 0 lets them reach the edge, leaving only the gap for Latte's hover strip.") }
+                }
+                ConfigSelectionArray {
+                    currentValue: Config.options?.tiling?.center ?? "on-overflow"
+                    onSelected: newValue => Config.setNestedValue("tiling.center", newValue)
+                    options: [
+                        { displayName: Translation.tr("Scroll minimally"), icon: "swap_horiz", value: "never" },
+                        { displayName: Translation.tr("Center when needed"), icon: "align_horizontal_center", value: "on-overflow" },
+                        { displayName: Translation.tr("Always center"), icon: "center_focus_strong", value: "always" }
+                    ]
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Only tile these apps")
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Empty = tile every window. Add an app's window class (for example kitty, org.kde.dolphin, firefox) to tile only those. The class is the app id KDE shows in System Settings › Window Rules.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    visible: (Config.options?.tiling?.onlyClasses ?? []).length > 0
+                    Repeater {
+                        model: Array.from(Config.options?.tiling?.onlyClasses ?? [])
+                        InputChip {
+                            required property string modelData
+                            text: modelData
+                            monospace: true
+                            onRemoved: root.tilingListRemove("onlyClasses", modelData)
+                        }
+                    }
+                }
+                MaterialTextField {
+                    id: onlyField
+                    Layout.fillWidth: true
+                    placeholderText: Translation.tr("Add a window class, then press Enter")
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    onAccepted: { root.tilingListAdd("onlyClasses", text); text = "" }
+                }
+            }
+
+            ContentSubsection {
+                title: Translation.tr("Never tile these apps")
+                StyledText {
+                    Layout.fillWidth: true
+                    text: Translation.tr("These always float. A trailing * matches a prefix (steam_app_* covers every Steam game). Dialogs, pop-ups and fixed-size windows always float on their own.")
+                    color: Appearance.colors.colSubtext
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    wrapMode: Text.WordWrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: Array.from(Config.options?.tiling?.floatClasses ?? [])
+                        InputChip {
+                            required property string modelData
+                            text: modelData
+                            monospace: true
+                            onRemoved: root.tilingListRemove("floatClasses", modelData)
+                        }
+                    }
+                }
+                MaterialTextField {
+                    id: floatField
+                    Layout.fillWidth: true
+                    placeholderText: Translation.tr("Add a window class, then press Enter")
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    onAccepted: { root.tilingListAdd("floatClasses", text); text = "" }
+                }
+            }
+
+            PageResetFooter {
+                Layout.fillWidth: true
+                scope: ["tiling"]
+                description: Translation.tr("Puts every tiling option back, including turning tiling off.")
             }
         }
     }
