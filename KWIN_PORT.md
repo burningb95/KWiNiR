@@ -628,6 +628,16 @@ itself is never written (the Tile scripting API has no split). The split list li
 and comes back with the config, so it survives a restart. Meta+arrow on a regions monitor only
 moves a window to the neighbouring slot (`zoneNeighbour`; no stack reorder, no monitor hop); on a
 scrolling monitor it does nothing unless `tiling.arrowKeysScrollStrips`.
+*Dragged region borders (round 8):* regions mode used to discard border drags. `zoneResizeDivider`
+(from `finishResize` on a zone) turns a top / bottom edge drag of a lone window into `state.dividers[output][slotId]` =
+share of the pair's height the upper slot keeps; a pair is a slot and the slot directly below with the same x span
+(`zoneBelow`), so it covers split halves and stacked tiles of the KWin layout alike. `zoneDerive` applies the shares
+on top of the layout and the splits; a share equal to the layout's own (±2 %) is dropped, and the minimum is 120 px.
+A divider-only change updates the rects in place (`refreshRegions` skips `zoneReseat`, which would re-seat by overlap).
+Nothing is written to KWin. Persisted like splits: report `dividers` -> `KWinBridge._syncDividers` ->
+`tiling.regionDividers` (JSON) -> config -> `applyConfig`; both `clean_dividers` in `kwinir_bridge.py` and the script
+validate. Not handled: side edges, stacks, three slots in a chain (shares apply in turn), live neighbour preview
+during the drag (it settles on release).
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
 focused one; on a regions monitor in `smart` mode `openTarget` returns null while any slot is empty, so `zoneSlotFor` fills it instead); the new window takes its cell (`replaceInContainer`) and the replaced window goes to

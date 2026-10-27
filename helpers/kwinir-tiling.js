@@ -420,7 +420,34 @@ function baseKey(r) { return [r.x, r.y, r.w, r.h].map(function (v) { return Math
 
 // KWin's tile rects plus the user's top/bottom splits (a list of baseKeys) -> the slot rects.
 // Every rect carries its base key; the halves of a split also carry half: 0 (top) / 1 (bottom).
-function zoneDerive(base, splits) {
+function slotId(r) { return r.key + (r.half === undefined ? "" : "#" + r.half); }
+
+// dividers: slotId of the upper slot -> share (0..1) of the pair's height the upper slot keeps.
+// The pair is the upper slot and the slot right below it with the same x span.
+function zoneDerive(base, splits, dividers) {
+    var out = zoneDeriveBase(base, splits);
+    if (!dividers) return out;
+    for (var i = 0; i < out.length; i++) {
+        var t = out[i], r = dividers[slotId(t)];
+        if (typeof r !== "number") continue;
+        var b = zoneBelow(out, t);
+        if (!b) continue;
+        var total = t.h + b.h, th = total * r;
+        b.y = t.y + th; b.h = total - th; t.h = th;
+    }
+    return out;
+}
+
+// The slot directly under t (same left edge and width, touching), or null.
+function zoneBelow(rects, t) {
+    for (var j = 0; j < rects.length; j++) {
+        var b = rects[j];
+        if (b !== t && Math.abs(b.x - t.x) < 0.002 && Math.abs(b.w - t.w) < 0.002 && Math.abs(b.y - (t.y + t.h)) < 0.002) return b;
+    }
+    return null;
+}
+
+function zoneDeriveBase(base, splits) {
     var out = [];
     for (var i = 0; i < base.length; i++) {
         var r = base[i], k = baseKey(r);
@@ -434,9 +461,9 @@ function zoneDerive(base, splits) {
     return out;
 }
 
-function makeZone(base, splits) {
+function makeZone(base, splits, dividers) {
     var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base, reserve: [] };
-    zoneSetRects(z, zoneDerive(base, splits));
+    zoneSetRects(z, zoneDerive(base, splits, dividers));
     z.focusedSlot = largestSlot(z.slots);
     return z;
 }
@@ -713,6 +740,7 @@ var state = {
     zones: {},         // key "Z:output|desktopId" -> zone (fixed regions), for outputs in regions mode
     modeFlip: {},      // output name -> "strip" | "regions": toggle-mode overrides cfg.regionOutputs
     splits: {},        // output name -> [baseKey]: tiles split top / bottom (persisted by the bar)
+    dividers: {},      // output name -> { slotId: share }: where the border under a slot sits (persisted by the bar)
     regionsSig: "",    // signature of the tile layouts last seen, to notice Meta+T edits
     byWin: {},         // window id -> strip or zone key
     floating: {},      // window id -> true when the user floated it (never auto-tiled)
@@ -809,7 +837,7 @@ function getZone(outName, deskId, create) {
     if (!z && create) {
         var out = outputByName(outName), desk = desktopById(deskId);
         if (!out || !desk) return null;
-        z = makeZone(readRegions(out, desk), state.splits[outName] || []);
+        z = makeZone(readRegions(out, desk), state.splits[outName] || [], state.dividers[outName]);
         z.key = key; z.outputName = outName; z.desktopId = deskId;
         state.zones[key] = z;
     }
@@ -820,16 +848,18 @@ function getZone(outName, deskId, create) {
 function refreshRegions(zone) {
     var out = outputByName(zone.outputName), desk = desktopById(zone.desktopId);
     if (!out || !desk) return false;
-    var base = readRegions(out, desk), rects = zoneDerive(base, state.splits[zone.outputName] || []);
+    var base = readRegions(out, desk), rects = zoneDerive(base, state.splits[zone.outputName] || [], state.dividers[zone.outputName]);
     if (JSON.stringify(rects) === zone.sig) return false;
     zone.base = base;
-    zoneReseat(zone, rects);
+    var same = rects.length === zone.slots.length;      // only a divider moved: every window keeps its slot
+    for (var i = 0; same && i < rects.length; i++) same = slotId(rects[i]) === slotId(zone.slots[i].rect);
+    if (same) zoneSetRects(zone, rects); else zoneReseat(zone, rects);
     return true;
 }
 
 function wantedSig(z) {
     var out = outputByName(z.outputName), desk = desktopById(z.desktopId);
-    return out && desk ? JSON.stringify(zoneDerive(readRegions(out, desk), state.splits[z.outputName] || [])) : z.sig;
+    return out && desk ? JSON.stringify(zoneDerive(readRegions(out, desk), state.splits[z.outputName] || [], state.dividers[z.outputName])) : z.sig;
 }
 function allContainers() {
     var out = [], k;
@@ -1433,8 +1463,37 @@ function forgetRects(c) {
     var wins = windowsOf(c);
     for (var i = 0; i < wins.length; i++) delete state.lastRect[wid(wins[i])];
 }
+// A top or bottom edge of a lone window dragged in a regions monitor: move the border it shares
+// with the slot above / below (same width). Back near the layout's own position it resets.
+// Returns true when state.dividers changed.
+function zoneResizeDivider(zone, w, start, cur) {
+    var at = zoneFind(zone, w), area = workArea(zone);
+    if (!at || !area || zone.slots[at.s].windows.length !== 1) return false;
+    var TH = 2, dS = cur.y - start.y, dE = (cur.y + cur.height) - (start.y + start.height);
+    var rects = zone.slots.map(function (sl) { return sl.rect; }), me = rects[at.s], top, bot, edge;
+    if (Math.abs(dE) >= TH && Math.abs(dS) < TH) { top = me; bot = zoneBelow(rects, me); edge = cur.y + cur.height + cfg.gap / 2; }
+    else if (Math.abs(dS) >= TH && Math.abs(dE) < TH) {
+        bot = me; top = null;
+        for (var j = 0; j < rects.length && !top; j++) if (zoneBelow(rects, rects[j]) === me) top = rects[j];
+        edge = cur.y - cfg.gap / 2;
+    } else return false;
+    if (!top || !bot) return false;
+    var total = top.h + bot.h, minShare = Math.min(0.45, 120 / (total * area.height));
+    var share = clamp(((edge - area.y) / area.height - top.y) / total, minShare, 1 - minShare);
+    var dflt = zoneDerive(zone.base, state.splits[zone.outputName] || [], null), id = slotId(top), r0 = null;
+    for (var k = 0; k < dflt.length && r0 === null; k++)
+        if (slotId(dflt[k]) === id) { var below = zoneBelow(dflt, dflt[k]); if (below) r0 = dflt[k].h / (dflt[k].h + below.h); }
+    var all = state.dividers[zone.outputName] ? JSON.parse(JSON.stringify(state.dividers[zone.outputName])) : {};
+    if (r0 !== null && Math.abs(share - r0) < 0.02) delete all[id]; else all[id] = Math.round(share * 10000) / 10000;
+    if (Object.keys(all).length) state.dividers[zone.outputName] = all; else delete state.dividers[zone.outputName];
+    return true;
+}
+
 function finishResize(w, strip, rec, cur) {
-    if (strip.kind === "zone") { forgetRects(strip); layoutAll(w); return; }   // slots are fixed: edit them with Meta+T
+    if (strip.kind === "zone") {      // slot borders are KWin's (Meta+T); only a horizontal border is ours to move
+        if (zoneResizeDivider(strip, w, rec.start, cur)) refreshRegions(strip);
+        forgetRects(strip); layoutAll(w); return;
+    }
     var area = workArea(strip), at = stripFind(strip, w);
     if (area && at) {
         var entries = rec.entries || computeLayout(strip, area, cfg);
@@ -1968,6 +2027,21 @@ function applyConfig(c) {
         }
         if (JSON.stringify(sortObj(sp)) !== JSON.stringify(sortObj(state.splits))) state.splits = sp;
     }
+    if (c.regionDividers && typeof c.regionDividers === "object" && !Array.isArray(c.regionDividers)) {
+        var dv = {}, dn = 0;
+        for (var don in c.regionDividers) {
+            var m = c.regionDividers[don];
+            if (!m || typeof m !== "object" || Array.isArray(m) || ++dn > 8) continue;
+            var clean = {}, cn = 0;
+            for (var did in m) {
+                if (++cn > 16) break;
+                if (/^-?[0-9.]+(,-?[0-9.]+){3}(#[01])?$/.test(did) && typeof m[did] === "number" && m[did] >= 0.05 && m[did] <= 0.95)
+                    clean[did] = m[did];
+            }
+            if (Object.keys(clean).length) dv[don] = clean;
+        }
+        if (JSON.stringify(dv) !== JSON.stringify(state.dividers)) state.dividers = dv;
+    }
     if (typeof c.newWindowOverlay === "boolean") cfg.newWindowOverlay = c.newWindowOverlay;
     if (typeof c.arrowKeysScrollStrips === "boolean") cfg.arrowKeysScrollStrips = c.arrowKeysScrollStrips;
     var ro = strList(c.regionOutputs, 8, 64);
@@ -2011,6 +2085,7 @@ function buildReport() {
     if (!rep.enabled) return rep;
     rep.splits = {};
     for (var spo in state.splits) if (state.splits[spo].length) rep.splits[spo] = state.splits[spo].slice().sort();
+    rep.dividers = JSON.parse(JSON.stringify(state.dividers));
     var cur = workspace.currentDesktop, active = workspace.activeWindow;
     for (var key in state.strips) {
         var strip = state.strips[key];

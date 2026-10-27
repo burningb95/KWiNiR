@@ -348,7 +348,7 @@ ContentPage {
                 }
                 StyledText {
                     Layout.fillWidth: true
-                    text: Translation.tr("Smart: the region already holding a window of the same app, otherwise the largest empty region, otherwise the focused one. Focused region: always where you are. Windows share a region by stacking.")
+                    text: Translation.tr("Smart: the largest empty region, otherwise the region already holding a window of the same app, otherwise the focused one. Focused region: always where you are. Windows share a region by stacking.")
                     color: Appearance.colors.colSubtext
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     wrapMode: Text.WordWrap
@@ -357,7 +357,7 @@ ContentPage {
 
             StyledText {
                 Layout.fillWidth: true
-                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Ctrl+Meta+S splits the focused region into a top and a bottom half (again to merge them). Meta + arrows move a window to the neighbouring region. Dragging a window drops it into the region under it. Region borders are fixed: resize them in the tile editor.")
+                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Ctrl+Meta+S splits the focused region into a top and a bottom half (again to merge them). Meta + arrows move a window to the neighbouring region. Dragging a window drops it into the region under it. Drag the horizontal border between two regions that sit one above the other to resize them (drag it back to the layout's own position to reset); the vertical borders are fixed: resize them in the tile editor.")
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 wrapMode: Text.WordWrap

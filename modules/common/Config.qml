@@ -1356,6 +1356,9 @@ Singleton {
                 // Tiles of KWin's layout split top / bottom with Ctrl+Meta+S: JSON {"DP-1": ["<x,y,w,h>", ...]},
                 // written by the bar from the tiler's reports, never edited by hand.
                 property string regionSplits: "{}"
+                // Where a region's lower border sits after dragging it: JSON {"DP-1": {"<x,y,w,h>": 0.62}}
+                // (share of the pair's height the upper region keeps), written by the bar from the tiler's reports.
+                property string regionDividers: "{}"
                 // A new window opens over a tiled window (same cell) instead of getting a cell of its
                 // own, so nothing scrolls and nothing else is hidden.
                 property bool newWindowOverlay: true

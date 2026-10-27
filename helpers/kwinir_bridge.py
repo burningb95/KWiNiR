@@ -421,6 +421,7 @@ def _str_list(v, max_items, max_len, pattern=None):
 
 
 SPLIT_KEY_RE = re.compile(r"^-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}$")
+DIVIDER_KEY_RE = re.compile(r"^-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}(#[01])?$")
 
 
 def clean_splits(v):
@@ -434,6 +435,21 @@ def clean_splits(v):
         good = [k for k in keys if isinstance(k, str) and SPLIT_KEY_RE.match(k)]
         if good:
             out[name] = sorted(good)
+    return out
+
+
+def clean_dividers(v):
+    """{output: {"x,y,w,h[#0|#1]": share}} -> the same with bad entries dropped; None when not a dict."""
+    if not isinstance(v, dict) or len(v) > 8:
+        return None if not isinstance(v, dict) else {}
+    out = {}
+    for name, shares in v.items():
+        if not isinstance(name, str) or not OUTPUT_RE.match(name) or not isinstance(shares, dict) or len(shares) > 16:
+            continue
+        good = {k: float(x) for k, x in shares.items()
+                if isinstance(k, str) and DIVIDER_KEY_RE.match(k) and _is_num(x, 0.05, 0.95)}
+        if good:
+            out[name] = good
     return out
 
 
@@ -470,6 +486,9 @@ def clean_tiling_config(c):
     splits = clean_splits(c.get("regionSplits"))
     if splits is not None:
         out["regionSplits"] = splits
+    dividers = clean_dividers(c.get("regionDividers"))
+    if dividers is not None:
+        out["regionDividers"] = dividers
     for key in ("newWindowOverlay", "arrowKeysScrollStrips"):
         if isinstance(c.get(key), bool):
             out[key] = c[key]
@@ -545,6 +564,8 @@ def clean_tiling_report(e):
     report = {"type": "tiling", "v": 1, "enabled": e["enabled"], "outputs": outputs}
     splits = clean_splits(e.get("splits"))
     report["splits"] = splits if splits is not None else {}
+    dividers = clean_dividers(e.get("dividers"))
+    report["dividers"] = dividers if dividers is not None else {}
     return report
 
 

@@ -57,6 +57,7 @@ Singleton {
                        top: t?.struts?.top ?? 0, bottom: t?.struts?.bottom ?? 0 }),
             regionOutputs: Array.from(t?.regionOutputs ?? []),
             regionSplits: root._parseSplits(t?.regionSplits),
+            regionDividers: root._parseSplits(t?.regionDividers),
             newWindowOverlay: t?.newWindowOverlay ?? true,
             arrowKeysScrollStrips: t?.arrowKeysScrollStrips ?? false,
             regionsNewWindow: t?.regionsNewWindow ?? "smart",
@@ -116,6 +117,24 @@ Singleton {
             Config.setNestedValue("tiling.regionSplits", mine)
     }
 
+    function _canonDividers(o): string {
+        const out = {}
+        for (const k of Object.keys(o ?? {}).sort()) {
+            const m = {}
+            for (const id of Object.keys(o[k] ?? {}).sort()) m[id] = Number(o[k][id])
+            out[k] = m
+        }
+        return JSON.stringify(out)
+    }
+
+    // Same idea for dragged region borders.
+    function _syncDividers(report): void {
+        if (!report || report.enabled !== true || !report.dividers) return
+        const mine = root._canonDividers(report.dividers)
+        if (mine !== root._canonDividers(root._parseSplits(Config.options?.tiling?.regionDividers)))
+            Config.setNestedValue("tiling.regionDividers", mine)
+    }
+
     function _sendTilingConfig(): void {
         if (root.tilingEnabled && root.ready && helper.running)
             helper.write(JSON.stringify({ type: "tiling-config", config: root.tilingConfig }) + "\n")
@@ -137,7 +156,7 @@ Singleton {
             return
         switch (event.type) {
         case "ready": root.ready = true; root._sendTilingConfig(); break
-        case "tiling": root.tiling = event; root._syncSplits(event); break
+        case "tiling": root.tiling = event; root._syncSplits(event); root._syncDividers(event); break
         case "fullscreen": root.fullscreen = event.value === true; break
         case "capture": root.capture = event.value === true; break
         case "jobs": root.activeJobs = Math.max(0, Number(event.count) || 0); break
