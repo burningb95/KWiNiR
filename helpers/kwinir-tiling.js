@@ -1505,6 +1505,8 @@ function openTarget(w) {
     var desk = w.desktops[0].id;
     var c = outputMode(out) === "regions" ? getZone(out, desk, false) : getStrip(out, desk, false);
     if (!c || c.desktopId !== workspace.currentDesktop.id) return null;
+    // Regions with an empty slot: fill it (zoneSlotFor) instead of replacing a window.
+    if (c.kind === "zone" && cfg.regionsNewWindow === "smart" && c.slots.some(function (s) { return !s.windows.length; })) return null;
     var shown = {};
     (c.lastLayout || []).forEach(function (e) { if (e.visible && !e.window.minimized && !e.window.deleted) shown[wid(e.window)] = e.window; });
     var cands = windowsOf(c).filter(function (x) { return shown[wid(x)] && x !== w && reserveIndex(c, x) < 0; });

@@ -630,7 +630,7 @@ moves a window to the neighbouring slot (`zoneNeighbour`; no stack reorder, no m
 scrolling monitor it does nothing unless `tiling.arrowKeysScrollStrips`.
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
-focused one); the new window takes its cell (`replaceInContainer`) and the replaced window goes to
+focused one; on a regions monitor in `smart` mode `openTarget` returns null while any slot is empty, so `zoneSlotFor` fills it instead); the new window takes its cell (`replaceInContainer`) and the replaced window goes to
 the **reserve** of that (monitor, desktop) container (`container.reserve`, hidden = minimized by us
 through the normal `layoutAll` hide path). A reserve is per container, so it can never hold or pull a
 window of another monitor; a window dragged elsewhere is untiled and re-tiled there. `scroll-next` /

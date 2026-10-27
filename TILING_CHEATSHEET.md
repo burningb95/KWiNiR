@@ -14,7 +14,9 @@ full-width **row**, and windows that share a row sit side by side. Everything be
 With "New windows take the focused window's place" on (Settings › Tiling › Layout, default on), a
 window you open (from Latte, a launcher, a terminal) does **not** get a column or region of its own:
 it takes the place of a tiled window of the **same app** if one is on screen, otherwise of the
-focused window on that monitor. Nothing scrolls and no other visible window moves.
+focused window on that monitor. Nothing scrolls and no other visible window moves. **On a regions
+monitor this only happens once every region is occupied**: while a region is empty, a new window
+fills it (same-app windows still stack in their app's region) and replaces nothing.
 - The window it replaced goes to that monitor's **reserve**: hidden (minimized) and waiting.
 - **`Meta+Shift+↓` / `Meta+Shift+↑`** replace the *focused* window with the next / previous window
   waiting in the reserve (a rotation: the one you replace joins the other end of the queue). Only the
