@@ -16,7 +16,7 @@ window you open (from Latte, a launcher, a terminal) does **not** get a column o
 it takes the place of a tiled window of the **same app** if one is on screen, otherwise of the
 focused window on that monitor. Nothing scrolls and no other visible window moves. **On a regions
 monitor this only happens once every region is occupied**: while a region is empty, a new window
-fills it (same-app windows still stack in their app's region) and replaces nothing.
+fills it and replaces nothing.
 - The window it replaced goes to that monitor's **reserve**: hidden (minimized) and waiting.
 - **`Meta+Shift+↓` / `Meta+Shift+↑`** replace the *focused* window with the next / previous window
   waiting in the reserve (a rotation: the one you replace joins the other end of the queue). Only the
@@ -37,8 +37,8 @@ fills it (same-app windows still stack in their app's region) and replaces nothi
 - **Fixed regions**: nothing scrolls and nothing is minimized. The monitor is divided into the
   slots of **KDE's own tile layout for it** (the 25 % | 50 % | 25 % you set up with `Meta+T`);
   every window sits in a slot, and a slot holds a stack of windows split evenly top to bottom.
-  - A new window goes to the slot already holding a window of the same app, otherwise to the
-    largest empty slot, otherwise to the focused slot (Settings › Tiling › Regions can switch
+  - A new window goes to the largest empty slot, otherwise to the slot already holding a window of
+    the same app, otherwise to the focused slot (Settings › Tiling › Regions can switch
     that to "always the focused slot").
   - Edit the slots with `Meta+T` (or Settings › Tiling › Regions › *Open KDE's tile editor*);
     the windows follow within a couple of seconds. Slots are numbered left to right (top to

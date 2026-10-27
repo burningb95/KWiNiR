@@ -635,23 +635,23 @@ function zoneEdgeSlot(zone, dir) {
     return best;
 }
 
-// Which slot a new window goes to. smart: a slot already holding a window of its app (the
-// focused slot wins a tie), else the largest empty slot, else the focused slot. focused: always
-// the focused slot.
+// Which slot a new window goes to. smart: the largest empty slot, else a slot already holding a
+// window of its app (the focused slot wins a tie), else the focused slot. focused: always the
+// focused slot.
 function zoneSlotFor(zone, w, policy) {
     if (policy === "focused") return zone.focusedSlot;
-    var app = String(w.resourceClass || ""), j, found = -1;
-    for (j = 0; j < zone.slots.length && found < 0; j++) {
-        var k = (zone.focusedSlot + j) % zone.slots.length;
-        for (var i = 0; i < zone.slots[k].windows.length; i++)
-            if (String(zone.slots[k].windows[i].resourceClass || "") === app) { found = k; break; }
-    }
-    if (found >= 0) return found;
-    var bestA = -1;
+    var j, found = -1, bestA = -1;
     for (j = 0; j < zone.slots.length; j++) {
         if (zone.slots[j].windows.length) continue;
         var a = zone.slots[j].rect.w * zone.slots[j].rect.h;
         if (a > bestA + 1e-9) { bestA = a; found = j; }
+    }
+    if (found >= 0) return found;
+    var app = String(w.resourceClass || "");
+    for (j = 0; j < zone.slots.length && found < 0; j++) {
+        var k = (zone.focusedSlot + j) % zone.slots.length;
+        for (var i = 0; i < zone.slots[k].windows.length; i++)
+            if (String(zone.slots[k].windows[i].resourceClass || "") === app) { found = k; break; }
     }
     return found >= 0 ? found : zone.focusedSlot;
 }

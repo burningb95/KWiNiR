@@ -597,7 +597,7 @@ the leaf tiles of KWin's own tile layout for (output, desktop), read through
 supported) and re-read every 1.5 s, so Meta+T edits apply live; the tiler never writes
 `window.tile` or `kwinrc`, it only positions windows itself. A slot holds a stack of windows, all
 visible, split evenly; there is no scrolling and no minimizing. New windows: `zoneSlotFor`
-(`smart`: slot holding the same app, else largest empty slot, else focused; or `focused`). Per
+(`smart`: largest empty slot, else the slot holding the same app, else focused; or `focused`). Per
 output mode = `tiling.regionOutputs` unless `toggle-mode` (Meta+Alt+G) flipped it at runtime
 (`state.modeFlip`, not persisted); changing it migrates the windows between containers
 (`migrateModes`). Drag-resize in a slot snaps back, drops pick the slot under the window, quick
