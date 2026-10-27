@@ -47,8 +47,10 @@ fills it and replaces nothing.
     bottom edge of a window to move the **horizontal border** it shares with the region above / below
     (same width: the two halves of a split, or two stacked tiles of your `Meta+T` layout); the other
     window gives up what it gains, nothing hides or swaps, and dragging back to the layout's own
-    position resets it. The vertical borders and a region holding a stack still belong to the tile
-    editor: dragging those snaps back.
+    position resets it. Drag a **left / right edge** to move the vertical border beside it: every
+    region touching that border follows (drag the big tile's edge and the whole column next to it
+    shrinks or grows). Only a lone window's top / bottom edge moves a horizontal border (a region
+    holding a stack snaps back); the monitor's outer edges never move.
   - Choose which monitors start in regions mode under Settings › Tiling › Regions, or flip the
     focused monitor on the spot with `Meta+Alt+G` (windows keep their order).
 

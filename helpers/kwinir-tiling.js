@@ -425,9 +425,19 @@ function slotId(r) { return r.key + (r.half === undefined ? "" : "#" + r.half); 
 // dividers: slotId of the upper slot -> share (0..1) of the pair's height the upper slot keeps.
 // The pair is the upper slot and the slot right below it with the same x span.
 function zoneDerive(base, splits, dividers) {
-    var out = zoneDeriveBase(base, splits);
+    var out = zoneDeriveBase(base, splits), i;
     if (!dividers) return out;
-    for (var i = 0; i < out.length; i++) {
+    // "v<x>": the vertical border the layout puts at x now sits at the value; every slot touching it follows
+    for (var dk in dividers) {
+        if (dk.charAt(0) !== "v" || typeof dividers[dk] !== "number") continue;
+        var bx = parseFloat(dk.slice(1)), nx = dividers[dk];
+        for (i = 0; i < out.length; i++) {
+            var q = out[i];
+            if (Math.abs(q.bx1 - bx) < 0.002) q.w = nx - q.x;
+            else if (Math.abs(q.bx0 - bx) < 0.002) { q.w = q.x + q.w - nx; q.x = nx; }
+        }
+    }
+    for (i = 0; i < out.length; i++) {
         var t = out[i], r = dividers[slotId(t)];
         if (typeof r !== "number") continue;
         var b = zoneBelow(out, t);
@@ -452,10 +462,10 @@ function zoneDeriveBase(base, splits) {
     for (var i = 0; i < base.length; i++) {
         var r = base[i], k = baseKey(r);
         if (splits && splits.indexOf(k) >= 0) {
-            out.push({ x: r.x, y: r.y, w: r.w, h: r.h / 2, key: k, half: 0 });
-            out.push({ x: r.x, y: r.y + r.h / 2, w: r.w, h: r.h / 2, key: k, half: 1 });
+            out.push({ x: r.x, y: r.y, w: r.w, h: r.h / 2, key: k, half: 0, bx0: r.x, bx1: r.x + r.w });
+            out.push({ x: r.x, y: r.y + r.h / 2, w: r.w, h: r.h / 2, key: k, half: 1, bx0: r.x, bx1: r.x + r.w });
         } else {
-            out.push({ x: r.x, y: r.y, w: r.w, h: r.h, key: k });
+            out.push({ x: r.x, y: r.y, w: r.w, h: r.h, key: k, bx0: r.x, bx1: r.x + r.w });
         }
     }
     return out;
@@ -1463,12 +1473,23 @@ function forgetRects(c) {
     var wins = windowsOf(c);
     for (var i = 0; i < wins.length; i++) delete state.lastRect[wid(wins[i])];
 }
-// A top or bottom edge of a lone window dragged in a regions monitor: move the border it shares
-// with the slot above / below (same width). Back near the layout's own position it resets.
-// Returns true when state.dividers changed.
+// An edge of a window dragged in a regions monitor moves a border of the layout, script-side
+// (KWin's layout is never written). Top / bottom edge of a lone window: the horizontal border
+// it shares with the slot above / below (same width). Left / right edge: the vertical border,
+// and every slot touching it follows (the glue between a big tile and the column beside it).
+// Back near the layout's own position a border resets. Returns true when state.dividers changed.
 function zoneResizeDivider(zone, w, start, cur) {
     var at = zoneFind(zone, w), area = workArea(zone);
-    if (!at || !area || zone.slots[at.s].windows.length !== 1) return false;
+    if (!at || !area) return false;
+    var all = state.dividers[zone.outputName] ? JSON.parse(JSON.stringify(state.dividers[zone.outputName])) : {};
+    var a = zone.slots[at.s].windows.length === 1 && zoneDragRows(zone, at, area, start, cur, all);
+    var b = zoneDragCols(zone, at, area, start, cur, all);
+    if (!a && !b) return false;
+    if (Object.keys(all).length) state.dividers[zone.outputName] = all; else delete state.dividers[zone.outputName];
+    return true;
+}
+
+function zoneDragRows(zone, at, area, start, cur, all) {
     var TH = 2, dS = cur.y - start.y, dE = (cur.y + cur.height) - (start.y + start.height);
     var rects = zone.slots.map(function (sl) { return sl.rect; }), me = rects[at.s], top, bot, edge;
     if (Math.abs(dE) >= TH && Math.abs(dS) < TH) { top = me; bot = zoneBelow(rects, me); edge = cur.y + cur.height + cfg.gap / 2; }
@@ -1483,14 +1504,34 @@ function zoneResizeDivider(zone, w, start, cur) {
     var dflt = zoneDerive(zone.base, state.splits[zone.outputName] || [], null), id = slotId(top), r0 = null;
     for (var k = 0; k < dflt.length && r0 === null; k++)
         if (slotId(dflt[k]) === id) { var below = zoneBelow(dflt, dflt[k]); if (below) r0 = dflt[k].h / (dflt[k].h + below.h); }
-    var all = state.dividers[zone.outputName] ? JSON.parse(JSON.stringify(state.dividers[zone.outputName])) : {};
     if (r0 !== null && Math.abs(share - r0) < 0.02) delete all[id]; else all[id] = Math.round(share * 10000) / 10000;
-    if (Object.keys(all).length) state.dividers[zone.outputName] = all; else delete state.dividers[zone.outputName];
+    return true;
+}
+
+function zoneDragCols(zone, at, area, start, cur, all) {
+    var TH = 2, dS = cur.x - start.x, dE = (cur.x + cur.width) - (start.x + start.width);
+    var rects = zone.slots.map(function (sl) { return sl.rect; }), me = rects[at.s], right, edge, j;
+    if (Math.abs(dE) >= TH && Math.abs(dS) < TH) { right = true; edge = cur.x + cur.width + cfg.gap / 2; }
+    else if (Math.abs(dS) >= TH && Math.abs(dE) < TH) { right = false; edge = cur.x - cfg.gap / 2; }
+    else return false;
+    var at0 = right ? me.x + me.w : me.x, bx = right ? me.bx1 : me.bx0;
+    var left = [], rite = [];                                    // the slots on either side of this border
+    for (j = 0; j < rects.length; j++) {
+        if (Math.abs(rects[j].x + rects[j].w - at0) < 0.002) left.push(rects[j]);
+        else if (Math.abs(rects[j].x - at0) < 0.002) rite.push(rects[j]);
+    }
+    if (!left.length || !rite.length) return false;              // an outer edge of the monitor: not a border
+    var lo = 0, hi = 1, minF = 200 / area.width;
+    for (j = 0; j < left.length; j++) lo = Math.max(lo, left[j].x + Math.min(minF, left[j].w * 0.4));
+    for (j = 0; j < rite.length; j++) hi = Math.min(hi, rite[j].x + rite[j].w - Math.min(minF, rite[j].w * 0.4));
+    if (lo > hi) return false;
+    var f = clamp((edge - area.x) / area.width, lo, hi), id = "v" + (Math.round(bx * 1000) / 1000);
+    if (Math.abs(f - bx) < 0.01) delete all[id]; else all[id] = Math.round(f * 10000) / 10000;
     return true;
 }
 
 function finishResize(w, strip, rec, cur) {
-    if (strip.kind === "zone") {      // slot borders are KWin's (Meta+T); only a horizontal border is ours to move
+    if (strip.kind === "zone") {      // slot borders are KWin's (Meta+T); we move them script-side
         if (zoneResizeDivider(strip, w, rec.start, cur)) refreshRegions(strip);
         forgetRects(strip); layoutAll(w); return;
     }
@@ -2035,7 +2076,7 @@ function applyConfig(c) {
             var clean = {}, cn = 0;
             for (var did in m) {
                 if (++cn > 16) break;
-                if (/^-?[0-9.]+(,-?[0-9.]+){3}(#[01])?$/.test(did) && typeof m[did] === "number" && m[did] >= 0.05 && m[did] <= 0.95)
+                if ((/^-?[0-9.]+(,-?[0-9.]+){3}(#[01])?$/.test(did) || /^v-?[0-9.]{1,10}$/.test(did)) && typeof m[did] === "number" && m[did] >= 0.05 && m[did] <= 0.95)
                     clean[did] = m[did];
             }
             if (Object.keys(clean).length) dv[don] = clean;

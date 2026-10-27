@@ -636,7 +636,7 @@ on top of the layout and the splits; a share equal to the layout's own (±2 %) i
 A divider-only change updates the rects in place (`refreshRegions` skips `zoneReseat`, which would re-seat by overlap).
 Nothing is written to KWin. Persisted like splits: report `dividers` -> `KWinBridge._syncDividers` ->
 `tiling.regionDividers` (JSON) -> config -> `applyConfig`; both `clean_dividers` in `kwinir_bridge.py` and the script
-validate. Not handled: side edges, stacks, three slots in a chain (shares apply in turn), live neighbour preview
+validate. Vertical borders (`zoneDragCols`): a left / right edge drag moves the border at that x; the key is `"v<x>"` (the layout's own x, so it survives earlier moves) and the value the new x as a fraction of the area; every slot whose base left / right edge (`bx0` / `bx1`) is there follows, minimum ~200 px; horizontal shares are applied after. Not handled: stacks (height), three slots in a chain (shares apply in turn), live neighbour preview
 during the drag (it settles on release).
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the

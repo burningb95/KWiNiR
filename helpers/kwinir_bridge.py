@@ -421,7 +421,7 @@ def _str_list(v, max_items, max_len, pattern=None):
 
 
 SPLIT_KEY_RE = re.compile(r"^-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}$")
-DIVIDER_KEY_RE = re.compile(r"^-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}(#[01])?$")
+DIVIDER_KEY_RE = re.compile(r"^(-?[0-9.]{1,10}(,-?[0-9.]{1,10}){3}(#[01])?|v-?[0-9.]{1,10})$")
 
 
 def clean_splits(v):

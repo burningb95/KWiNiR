@@ -357,7 +357,7 @@ ContentPage {
 
             StyledText {
                 Layout.fillWidth: true
-                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Ctrl+Meta+S splits the focused region into a top and a bottom half (again to merge them). Meta + arrows move a window to the neighbouring region. Dragging a window drops it into the region under it. Drag the horizontal border between two regions that sit one above the other to resize them (drag it back to the layout's own position to reset); the vertical borders are fixed: resize them in the tile editor.")
+                text: Translation.tr("Meta+Alt+1…6 send the focused window to that region (left to right, or top to bottom, as in the editor). Ctrl+Meta+S splits the focused region into a top and a bottom half (again to merge them). Meta + arrows move a window to the neighbouring region. Dragging a window drops it into the region under it. Drag a window's edge to move the border it shares with its neighbour: the horizontal border between two regions one above the other, or the vertical border beside them, which every region touching it follows. Drag it back to the layout's own position to reset. The monitor's outer edges don't move.")
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 wrapMode: Text.WordWrap
