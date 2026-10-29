@@ -646,6 +646,15 @@ skipped by the layout meanwhile. Focus moves, drags, new windows and closing the
 handed its cell to the reserve heir but cleared `scriptMin`, so nothing un-minimized the heir (it stays
 marked ours now and `layoutAll` restores it); and `zoneDropMinimized` (in `layoutAll`) untiles any zone
 window that is minimized without us having done it, except the window about to be focused.
+*Meta+drag (2026-10-29):* a KWin script cannot see modifier keys, so "Meta held" used to be guessed from
+where the drag began (below the title bar = a modifier drag), and a Meta+drag started on the title bar or a
+header tiled the window instead of floating it. `MetaWatcher` in `kwinir_bridge.py` now reads the two Meta
+keys' state from the keyboards' evdev nodes (python-evdev, user in the `input` group; opened read-only, never
+grabbed; every other event is dropped unread, nothing logged or stored) and pushes `meta-held` true/false to
+the tiler (`state.metaHeld`; an internal command, not in `TILING_COMMANDS`, so the bar cannot send it). A
+drag that starts with Meta down is a "body" drag (floats). Keyboards are rescanned every 5 s, which also
+re-reads the kernel's held keys so a missed release cannot leave Meta stuck. Without python-evdev or device
+access it logs once and the old guess applies.
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
 focused one; on a regions monitor in `smart` mode `openTarget` returns null while any slot is empty, so `zoneSlotFor` fills it instead); the new window takes its cell (`replaceInContainer`) and the replaced window goes to

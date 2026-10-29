@@ -815,6 +815,7 @@ var state = {
     lastRect: {},      // window id -> "x,y,w,h" last written
     interactive: {},   // window id -> {start, resizing, strip, at, area, entries, cur} during a user move/resize
     dragId: null,      // id of the window being dragged (live resize preview)
+    metaHeld: false,   // a Meta key is down (pushed by the bridge, which reads it: scripts cannot see modifiers)
     geomDirty: {},     // window id -> window whose geometry changed outside our writes
     fixes: {},         // window id -> {n, t0}: re-assert attempts, capped so we never fight a client
     wired: {},         // window id -> true once per-window signals are connected
@@ -1284,7 +1285,7 @@ function wireWindow(w) {
     w.interactiveMoveResizeStarted.connect(guard("moveStarted", function () {
         var g = w.frameGeometry, strip = stripOf(w);
         var rec = { start: { x: g.x, y: g.y, width: g.width, height: g.height }, resizing: w.resize === true,
-                    body: dragStartedInBody(w),
+                    body: state.metaHeld || dragStartedInBody(w),
                     strip: strip, at: null, area: null, entries: null, cur: null };
         if (strip && strip.kind !== "zone") {
             rec.at = stripFind(strip, w);
@@ -1356,7 +1357,8 @@ function cloneStrip(strip) {
     return cp;
 }
 
-// A drag that began inside the window (not on its title bar) is a modifier drag: Meta+left
+// A drag with Meta held (state.metaHeld, from the bridge) floats the window wherever it began. Without
+// that, a drag that began inside the window (not on its title bar) is taken for a modifier drag: Meta+left
 // button, or whatever KWin's Window Actions are set to. Server-decorated windows have a known
 // title bar (client area starts below it); client-decorated ones are assumed to have a header
 // bar of up to 48 px. A keyboard-started move warps the pointer to the centre: also "body".
@@ -2033,6 +2035,8 @@ var COMMANDS = {
     },
     "config": function (arg) { return { ok: applyConfig(arg) }; },
     "relayout": function () { layoutAll(null); return { ok: true }; },
+    // internal: the bridge reports Meta going down / up, so a Meta+drag floats wherever it starts
+    "meta-held": function (arg) { state.metaHeld = arg === true; return { ok: true }; },
     "dump": function () { return { ok: true, strips: dumpStrips(), active: activeInfo() }; },
     "windows": function (arg) {
         // debug: real KWin state of every normal window of a class (no titles beyond caption)

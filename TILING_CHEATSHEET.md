@@ -43,7 +43,7 @@ fills it and replaces nothing.
   - Edit the slots with `Meta+T` (or Settings › Tiling › Regions › *Open KDE's tile editor*);
     the windows follow within a couple of seconds. Slots are numbered left to right (top to
     bottom when the layout is stacked).
-  - Dragging a window drops it into the slot under it; `Meta`-drag still floats. Drag the top or
+  - Dragging a window drops it into the slot under it; `Meta`-drag floats it, wherever in the window you grab it (title bar included). Drag the top or
     bottom edge of a window to move the **horizontal border** it shares with the region above / below
     (same width: the two halves of a split, or two stacked tiles of your `Meta+T` layout); the other
     window gives up what it gains, nothing hides or swaps, and dragging back to the layout's own

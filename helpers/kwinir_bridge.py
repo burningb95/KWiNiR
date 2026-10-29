@@ -88,6 +88,8 @@ TILING_COMMANDS = {
     "send-to-slot", "toggle-mode", "snap-left", "snap-right", "snap-up", "snap-down", "split-region",
     "scroll-next", "scroll-prev",
 }
+KEY_LEFTMETA, KEY_RIGHTMETA = 125, 126
+META_RESCAN_MS = 5000       # new keyboards are picked up and the held state re-read from the kernel this often
 CLASS_RE = re.compile(r"^[A-Za-z0-9._@+*-]{1,100}$")
 # KWin port: with --quicktile (and --tiling) the stock Meta+arrow quick-tile bindings are released
 # while tiling runs, so the tiler's own Meta+arrow shortcuts get the keys without a fight. The
@@ -569,6 +571,120 @@ def clean_tiling_report(e):
     return report
 
 
+class MetaWatcher:
+    """Whether a Meta (Super) key is down, for the tiler: KWin scripts cannot see modifier keys, and a
+    Meta+drag must float a window wherever the drag starts. Reads the keyboards' evdev nodes (the user
+    is in the `input` group) without grabbing them: only the state of the two Meta keys is looked at,
+    every other event is dropped unread, nothing is logged or stored. Without python-evdev or access to
+    the devices it stays off and the tiler falls back to guessing from where the drag began."""
+
+    def __init__(self, on_change):
+        self.on_change = on_change
+        self.held = False
+        self.devs = {}            # path -> {"dev": InputDevice, "src": GLib source id, "down": set of codes}
+        self.timer = None
+        self.evdev = None
+
+    def start(self):
+        try:
+            import evdev
+        except ImportError:
+            log("meta watcher off: python-evdev is not installed")
+            return False
+        self.evdev = evdev
+        self._rescan()
+        self.timer = GLib.timeout_add(META_RESCAN_MS, self._rescan)
+        return True
+
+    def stop(self):
+        if self.timer is not None:
+            GLib.source_remove(self.timer)
+            self.timer = None
+        for path in list(self.devs):
+            self._drop(path)
+
+    def _rescan(self):
+        """Open keyboards that appeared, forget ones that went, and re-read what the kernel says is held
+        (a release that happened while we were not reading must not leave Meta stuck down)."""
+        ev = self.evdev
+        try:
+            paths = set(ev.list_devices())
+        except OSError:
+            paths = set()
+        for path in list(self.devs):
+            if path not in paths:
+                self._drop(path)
+        for path in paths - set(self.devs):
+            self._open(path)
+        for path, d in list(self.devs.items()):
+            if d is None:
+                continue
+            try:
+                d["down"] = self._meta_down(d["dev"].active_keys())
+            except OSError:
+                self._drop(path)
+        self._publish()
+        return GLib.SOURCE_CONTINUE
+
+    @staticmethod
+    def _meta_down(codes):
+        return {c for c in codes if c in (KEY_LEFTMETA, KEY_RIGHTMETA)}
+
+    def _open(self, path):
+        ev = self.evdev
+        try:
+            dev = ev.InputDevice(path)
+            keys = dev.capabilities().get(ev.ecodes.EV_KEY, [])
+            if KEY_LEFTMETA not in keys:
+                dev.close()
+                self.devs[path] = None     # not a keyboard: do not retry every rescan
+                return
+            os.set_blocking(dev.fd, False)
+            src = GLib.io_add_watch(dev.fd, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR,
+                                    lambda _fd, cond, p=path: self._on_ready(p, cond))
+            self.devs[path] = {"dev": dev, "src": src, "down": set()}
+        except OSError:
+            pass                           # no permission or it vanished: the next rescan tries again
+
+    def _drop(self, path, remove_source=True):
+        d = self.devs.pop(path, None)
+        if d:
+            if remove_source:
+                GLib.source_remove(d["src"])
+            try:
+                d["dev"].close()
+            except OSError:
+                pass
+        self._publish()
+
+    def _on_ready(self, path, cond):
+        d = self.devs.get(path)
+        if d is None:
+            return GLib.SOURCE_REMOVE
+        ev = self.evdev.ecodes
+        try:
+            if cond & (GLib.IO_HUP | GLib.IO_ERR):
+                raise OSError("device gone")
+            for e in d["dev"].read():
+                if e.type == ev.EV_KEY and e.code in (KEY_LEFTMETA, KEY_RIGHTMETA):
+                    (d["down"].add if e.value else d["down"].discard)(e.code)
+                elif e.type == ev.EV_SYN and e.code == ev.SYN_DROPPED:
+                    d["down"] = self._meta_down(d["dev"].active_keys())
+        except BlockingIOError:
+            pass
+        except OSError:
+            self._drop(path, remove_source=False)     # returning SOURCE_REMOVE ends the watch; a rescan reopens it
+            return GLib.SOURCE_REMOVE
+        self._publish()
+        return GLib.SOURCE_CONTINUE
+
+    def _publish(self):
+        held = any(d["down"] for d in self.devs.values() if d)
+        if held != self.held:
+            self.held = held
+            self.on_change(held)
+
+
 class Bridge:
     def __init__(self, jobs_enabled, tiling_enabled=False, quicktile=False):
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -607,8 +723,10 @@ class Bridge:
                                          self._on_kwin_appeared, self._on_kwin_vanished)
         GLib.timeout_add(KWIN_STATE_INTERVAL_MS, self._poll_kwin_state)
         GLib.timeout_add(POLL_HEARTBEAT_MS, self._poll_heartbeat)
+        self.meta = MetaWatcher(self._on_meta) if tiling_enabled else None
         if tiling_enabled:
             self._watch_stdin()
+            self.meta.start()
 
         if jobs_enabled:
             server = Gio.DBusNodeInfo.new_for_xml(SERVER_XML)
@@ -858,6 +976,11 @@ class Bridge:
             if cmd is not None and len(self.cmd_queue) < 32:
                 self._enqueue(*cmd)
 
+    def _on_meta(self, held):
+        """Meta went down / up: tell the tiler (only the latest state is worth queueing)."""
+        self.cmd_queue = [c for c in self.cmd_queue if c["name"] != "meta-held"]
+        self._enqueue("meta-held", held)
+
     def _enqueue(self, name, arg=None, on_ack=None):
         cid = self.next_cmd_id
         self.next_cmd_id += 1
@@ -873,6 +996,9 @@ class Bridge:
         if not self.config_sent and self.tiling_config is not None:
             cmd = {"id": 0, "type": "cmd", "name": "config", "arg": self.tiling_config}
             self.config_sent = True
+            if self.meta is not None and self.meta.held:     # a freshly loaded script starts with Meta up
+                self.cmd_queue.append({"id": self.next_cmd_id, "type": "cmd", "name": "meta-held", "arg": True})
+                self.next_cmd_id += 1
         elif self.cmd_queue and (self.config_sent or self.quitting):
             cmd = self.cmd_queue.pop(0)
         if cmd is None:
@@ -1073,6 +1199,8 @@ class Bridge:
         if getattr(self, "_finished", False):
             return GLib.SOURCE_REMOVE
         self._finished = True
+        if self.meta is not None:
+            self.meta.stop()
         was_tiling = self.tiling_loaded
         self.unload_script()
         if was_tiling and not self.replaced:
