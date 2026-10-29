@@ -638,6 +638,9 @@ Nothing is written to KWin. Persisted like splits: report `dividers` -> `KWinBri
 `tiling.regionDividers` (JSON) -> config -> `applyConfig`; both `clean_dividers` in `kwinir_bridge.py` and the script
 validate. Vertical borders (`zoneDragCols`): a left / right edge drag moves the border at that x; the key is `"v<x>"` (the layout's own x, so it survives earlier moves) and the value the new x as a fraction of the area; every slot whose base left / right edge (`bx0` / `bx1`) is there follows, minimum ~200 px; horizontal shares are applied after. Not handled: stacks (height), three slots in a chain (shares apply in turn), live neighbour preview
 during the drag (it settles on release).
+*Span (Meta+Alt+F in a zone):* `zoneToggleSpan` grows the focused window over its column's full height, then
+over the whole working area, then back (`zone.span`, `zoneBox` / `zoneSpanRect`); the slots underneath are
+skipped by the layout meanwhile. Focus moves, drags, new windows and closing the window end it.
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
 focused one; on a regions monitor in `smart` mode `openTarget` returns null while any slot is empty, so `zoneSlotFor` fills it instead); the new window takes its cell (`replaceInContainer`) and the replaced window goes to

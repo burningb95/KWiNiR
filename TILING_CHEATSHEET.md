@@ -108,7 +108,7 @@ While tiling runs the tiler **owns the four Meta+arrow keys**: it releases KDE's
 | Keys | Does |
 |---|---|
 | `Meta+Alt+R` | cycle the column width through 33 % → 50 % → 67 % (row height on a portrait monitor) |
-| `Meta+Alt+F` | maximize the column, again to go back |
+| `Meta+Alt+F` | maximize the column, again to go back. **Regions mode:** grows the focused window over the regions beside it: press once for the full height of its column (a split pair becomes one tall window), again for the whole monitor, again to go back. The regions underneath are hidden meanwhile; focusing another window, moving/dragging, any move or focus key, or a new window ends it |
 | `Meta+Alt+C` | center the column in the view |
 
 ## Mouse

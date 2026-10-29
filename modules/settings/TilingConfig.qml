@@ -486,7 +486,7 @@ ContentPage {
                         { keys: "Meta+Alt+Shift+J / K", what: Translation.tr("Move the window down / up") },
                         { keys: "Meta+Alt+[ / ]", what: Translation.tr("Pull the window into the previous / next column, or push it out into its own") },
                         { keys: "Meta+Alt+R", what: Translation.tr("Cycle the column width (the height of a row on a portrait monitor)") },
-                        { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column") },
+                        { keys: "Meta+Alt+F", what: Translation.tr("Maximize the column. Regions mode: grow the window over the regions beside it (full height of its column, then the whole monitor, then back)") },
                         { keys: "Meta+Alt+C", what: Translation.tr("Center the column") },
                         { keys: "Meta+Alt+V", what: Translation.tr("Float / re-tile the window") },
                         { keys: "Meta + ← → ↑ ↓", what: Translation.tr("Regions mode: move the window to the neighbouring region that way (within the monitor): it swaps with a single window there, joins a stack, or fills an empty region. Scrolling monitors: nothing, unless enabled above") },

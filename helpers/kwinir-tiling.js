@@ -472,7 +472,7 @@ function zoneDeriveBase(base, splits) {
 }
 
 function makeZone(base, splits, dividers) {
-    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base, reserve: [] };
+    var z = { kind: "zone", slots: [], focusedSlot: 0, lastLayout: null, sig: "", base: base, reserve: [], span: null };
     zoneSetRects(z, zoneDerive(base, splits, dividers));
     z.focusedSlot = largestSlot(z.slots);
     return z;
@@ -575,6 +575,7 @@ function zoneRemove(zone, w) {
     var at = zoneFind(zone, w);
     if (!at) return false;
     var slot = zone.slots[at.s];
+    if (zone.span && zone.span.id === wid(w)) zone.span = null;
     slot.windows.splice(at.i, 1);
     if (slot.focused > at.i || slot.focused >= slot.windows.length) slot.focused = Math.max(0, slot.focused - 1);
     return true;
@@ -705,21 +706,76 @@ function zoneSlotAt(zone, area, px, py) {
     return best;
 }
 
-// Pure: where every window goes. Edges on the area's border keep `gap`, edges shared with a
+// Pure pixel box of a fractional rect: edges on the area's border keep `gap`, edges shared with a
 // neighbouring slot keep half of it, so adjacent slots are `gap` apart.
+function zoneBox(r, area, c) {
+    var half = c.gap / 2;
+    return {
+        L: Math.round(area.x + r.x * area.width + (r.x <= 0.001 ? c.gap : half)),
+        R: Math.round(area.x + (r.x + r.w) * area.width - (r.x + r.w >= 0.999 ? c.gap : half)),
+        T: Math.round(area.y + r.y * area.height + (r.y <= 0.001 ? c.gap : half)),
+        B: Math.round(area.y + (r.y + r.h) * area.height - (r.y + r.h >= 0.999 ? c.gap : half))
+    };
+}
+
+// The fractional rect a spanned window covers: "band" = its slot's columns, top to bottom of the
+// monitor; "all" = the whole working area.
+function zoneSpanRect(zone, slotIdx, level) {
+    var r = zone.slots[slotIdx].rect;
+    return level === "all" ? { x: 0, y: 0, w: 1, h: 1 } : { x: r.x, y: 0, w: r.w, h: 1 };
+}
+
+function sameRect(a, b) {
+    return Math.abs(a.x - b.x) < 0.002 && Math.abs(a.y - b.y) < 0.002 && Math.abs(a.w - b.w) < 0.002 && Math.abs(a.h - b.h) < 0.002;
+}
+
+// Meta+Alt+F in a zone: the focused window grows slot -> full height of its column -> the whole
+// monitor -> back to its slot. Steps that would not change anything are skipped.
+function zoneToggleSpan(zone) {
+    var w = zoneFocusedWindow(zone);
+    if (!w) return false;
+    var r = zone.slots[zone.focusedSlot].rect, steps = [], k;
+    var cur = zone.span && zone.span.id === wid(w) ? zone.span.level : null;
+    var levels = ["band", "all"], from = cur ? levels.indexOf(cur) + 1 : 0, prev = cur ? zoneSpanRect(zone, zone.focusedSlot, cur) : r;
+    for (k = from; k < levels.length; k++) {
+        var next = zoneSpanRect(zone, zone.focusedSlot, levels[k]);
+        if (!sameRect(next, prev)) { zone.span = { id: wid(w), level: levels[k] }; return true; }
+    }
+    if (!cur) return false;             // a lone slot has nothing to grow into
+    zone.span = null;
+    return true;
+}
+
+// The spanned window of a zone: { window, rect } or null (it may have left the zone).
+function zoneSpanned(zone) {
+    if (!zone.span) return null;
+    for (var s = 0; s < zone.slots.length; s++)
+        for (var i = 0; i < zone.slots[s].windows.length; i++)
+            if (wid(zone.slots[s].windows[i]) === zone.span.id)
+                return { window: zone.slots[s].windows[i], rect: zoneSpanRect(zone, s, zone.span.level) };
+    return null;
+}
+
+// Pure: where every window goes. A spanned window takes its span's box; every window in a slot
+// that span touches is hidden until the span ends.
 function zoneLayout(zone, area, c) {
-    var out = [], half = c.gap / 2;
+    var out = [], sp = zoneSpanned(zone);
     for (var s = 0; s < zone.slots.length; s++) {
-        var slot = zone.slots[s], r = slot.rect, n = slot.windows.length;
+        var slot = zone.slots[s], n = slot.windows.length;
         if (!n) continue;
-        var L = Math.round(area.x + r.x * area.width + (r.x <= 0.001 ? c.gap : half));
-        var R = Math.round(area.x + (r.x + r.w) * area.width - (r.x + r.w >= 0.999 ? c.gap : half));
-        var T = Math.round(area.y + r.y * area.height + (r.y <= 0.001 ? c.gap : half));
-        var B = Math.round(area.y + (r.y + r.h) * area.height - (r.y + r.h >= 0.999 ? c.gap : half));
+        var b = zoneBox(slot.rect, area, c), L = b.L, R = b.R, T = b.T, B = b.B;
+        var covered = sp && overlapArea(slot.rect, sp.rect) > 1e-9;
         var total = (B - T) - c.gap * (n - 1), h = Math.floor(total / n);
-        for (var i = 0; i < n; i++)
-            out.push({ window: slot.windows[i], column: s, row: i, visible: true,
-                       rect: { x: L, y: T + i * (h + c.gap), width: R - L, height: i === n - 1 ? total - h * (n - 1) : h } });
+        for (var i = 0; i < n; i++) {
+            var e = { window: slot.windows[i], column: s, row: i, visible: !covered,
+                      rect: { x: L, y: T + i * (h + c.gap), width: R - L, height: i === n - 1 ? total - h * (n - 1) : h } };
+            if (sp && e.window === sp.window) {
+                var sb = zoneBox(sp.rect, area, c);
+                e.visible = true;
+                e.rect = { x: sb.L, y: sb.T, width: sb.R - sb.L, height: sb.B - sb.T };
+            }
+            out.push(e);
+        }
     }
     return out;
 }
@@ -960,6 +1016,7 @@ function tileZone(w, out, slot) {
     var zone = getZone(out, w.desktops[0].id, true);
     if (!zone) return null;
     if (zoneFind(zone, w)) return zone;
+    zone.span = null;                   // a new window must not open under a spanned one
     zoneAdd(zone, w, slot !== undefined ? slot : zoneSlotFor(zone, w, cfg.regionsNewWindow));
     state.byWin[wid(w)] = zone.key;
     return zone;
@@ -1222,6 +1279,7 @@ function wireWindow(w) {
             rec.area = workArea(strip);
             rec.entries = rec.area ? computeLayout(strip, rec.area, cfg) : null;
         }
+        if (strip && strip.span) strip.span = null;      // dragging a spanned window ends the span
         state.interactive[wid(w)] = rec;
         state.dragId = wid(w);
     }));
@@ -1719,6 +1777,9 @@ function onWindowActivated(w) {
     if (!strip) return;
     if (reserveIndex(strip, w) >= 0) { bringFromReserve(w, strip); return; }
     if (strip.kind === "zone") {
+        // Focusing a window the span hides (Alt+Tab, a click) ends the span; our own focus moves
+        // while laying out (a minimize hands focus on) do not.
+        if (strip.span && strip.span.id !== wid(w) && !state.applying) strip.span = null;
         if (zoneFocusWindow(strip, w)) layoutAll(w);
         return;
     }
@@ -1747,7 +1808,12 @@ function withCont(sfn, zfn, keepScroll) {
     var c = currentContainer();
     if (!c) return { ok: false, error: "no strip" };
     if (c.kind === "zone") {
-        if (!zfn || !zfn(c)) return { ok: true, changed: false };
+        var unspanned = !!c.span && zfn !== zoneToggleSpan;
+        if (unspanned) c.span = null;   // any other command goes back to tiling first
+        if (!zfn || !zfn(c)) {
+            if (unspanned) layoutAll(zoneFocusedWindow(c));
+            return { ok: true, changed: unspanned };
+        }
         layoutAll(zoneFocusedWindow(c));
         return { ok: true, changed: true };
     }
@@ -1878,7 +1944,8 @@ var COMMANDS = {
         return withStrip(function (s) { return stripConsumeOrExpel(s, 1, cfg.defaultWidth); });
     },
     "cycle-width": function () { return withStrip(function (s) { return stripCycleWidth(s, cfg.presetWidths); }); },
-    "maximize-column": function () { return withStrip(function (s) { return stripToggleMaximize(s); }); },
+    // scrolling: maximize the column; regions: grow the window over neighbouring regions (see zoneToggleSpan)
+    "maximize-column": function () { return withCont(function (s) { return stripToggleMaximize(s); }, zoneToggleSpan); },
     "center-column": function () {
         return withStrip(function (s) {
             var area = workArea(s), xs = area && columnXs(s, area, cfg), c = xs && xs[s.focusedColumn];
