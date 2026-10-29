@@ -1056,6 +1056,18 @@ function writeGeometry(w, rect) {
     w.frameGeometry = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
+// A window the user minimized leaves its slot (minimizedChanged), but if that signal never reached
+// us it would still hold a row of the stack: an empty band above or below the visible windows that
+// they cannot grow into. Windows WE minimized are not touched (layout restores those), nor is the
+// window about to be focused (a reserve window coming back is un-minimized by that focus).
+function zoneDropMinimized(zone, keep) {
+    var wins = zoneWindows(zone);
+    for (var i = 0; i < wins.length; i++) {
+        var w = wins[i];
+        if (w.minimized && w !== keep && !w.deleted && !state.scriptMin[wid(w)]) untile(w);
+    }
+}
+
 // Applies the model to KWin for every strip on the current desktop. focusTarget: window to
 // leave focused; null keeps the focus the user had (re-activating it if a minimize stole it).
 function layoutAll(focusTarget) {
@@ -1070,7 +1082,7 @@ function layoutAll(focusTarget) {
             if (strip.desktopId !== cur.id) continue;
             var area = workArea(strip);
             if (!area) continue;
-            if (strip.kind === "zone") refreshRegions(strip);
+            if (strip.kind === "zone") { refreshRegions(strip); zoneDropMinimized(strip, focusTarget); }
             // A strip whose windows left (moved to another monitor, minimized by the user) may be
             // scrolled past its end: keep the focused column in view before laying out.
             else if (strip.columns.length) {
@@ -1750,8 +1762,7 @@ function onWindowRemoved(w) {
             strip.reserve.splice(ri, 1);                       // it was only waiting
         } else if (strip.reserve.length) {
             heir = strip.reserve.pop();                        // the most recently replaced window comes back
-            replaceInContainer(strip, w, heir);
-            delete state.scriptMin[wid(heir)];
+            replaceInContainer(strip, w, heir);                // still marked ours: layoutAll un-minimizes it in its cell
         } else if (strip.kind === "zone") zoneRemove(strip, w);
         else stripRemove(strip, w);
         delete state.byWin[id];

@@ -641,6 +641,11 @@ during the drag (it settles on release).
 *Span (Meta+Alt+F in a zone):* `zoneToggleSpan` grows the focused window over its column's full height, then
 over the whole working area, then back (`zone.span`, `zoneBox` / `zoneSpanRect`); the slots underneath are
 skipped by the layout meanwhile. Focus moves, drags, new windows and closing the window end it.
+*Ghost rows (2026-10-29):* a window that was minimized but still seated in a slot kept its row of the stack
+(an empty band the visible window could not grow into). Two causes fixed: closing an unfocused tiled window
+handed its cell to the reserve heir but cleared `scriptMin`, so nothing un-minimized the heir (it stays
+marked ours now and `layoutAll` restores it); and `zoneDropMinimized` (in `layoutAll`) untiles any zone
+window that is minimized without us having done it, except the window about to be focused.
 *Reserve and scroll (round 7, replaces the round-6 "overlay"):* `tiling.newWindowOverlay` (default on,
 name kept): `openTarget` picks the tiled window a new window replaces (same app on screen, else the
 focused one; on a regions monitor in `smart` mode `openTarget` returns null while any slot is empty, so `zoneSlotFor` fills it instead); the new window takes its cell (`replaceInContainer`) and the replaced window goes to
