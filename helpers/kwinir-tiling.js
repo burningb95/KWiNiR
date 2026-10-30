@@ -823,6 +823,7 @@ var state = {
     pendingLayout: false,
     released: false,
     lastActive: null,
+    lastRealActive: null,   // last non-null active window: KWin drops focus to null before windowRemoved
     started: false,      // false until the bridge's `config` arrives (or cfg.autostart)
     lastReport: ""
 };
@@ -1153,20 +1154,27 @@ function scheduleLayout() {
 
 // KWin picks the next active window itself after a close, in its own recent-use order and
 // possibly after our windowRemoved handler ran. A moment later, if focus left the strip the
-// closed window belonged to, put it back on that strip's focused column.
-var refocusTimer = null, refocusKey = null;
-function scheduleRefocus(key) {
+// closed window belonged to, put it back on that strip's focused column. When the close
+// brought a window back from the reserve, that window must have focus: KWin's pick can be a
+// neighbour in the same strip, which the strip check alone would accept.
+var refocusTimer = null, refocusKey = null, refocusHeir = null;
+function scheduleRefocus(key, heir) {
     if (!refocusTimer) return;
     refocusKey = key;
+    refocusHeir = heir || null;
     refocusTimer.start();
 }
 
 function doRefocus() {
-    var strip = containerByKey(refocusKey);
-    refocusKey = null;
+    var strip = containerByKey(refocusKey), heir = refocusHeir;
+    refocusKey = null; refocusHeir = null;
     if (!strip || state.released) return;
-    var aw = workspace.activeWindow, target = containerFocused(strip);
-    if (target && !target.deleted && !(aw && contOf(aw) === strip)) {
+    var aw = workspace.activeWindow;
+    if (heir && !heir.deleted && contOf(heir) === strip && reserveIndex(strip, heir) < 0 && aw !== heir)
+        containerFocusWindow(strip, heir);
+    else if (aw && contOf(aw) === strip) return;
+    var target = containerFocused(strip);
+    if (target && !target.deleted && aw !== target) {
         if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
         layoutAll(target);
     }
@@ -1757,7 +1765,9 @@ function onWindowAdded(w) {
 }
 
 function onWindowRemoved(w) {
-    var id = wid(w), strip = stripOf(w), wasActive = state.lastActive === id, heir = null;
+    // Closing the active window: KWin may first activate nothing, then remove it.
+    var id = wid(w), strip = stripOf(w), heir = null,
+        wasActive = state.lastActive === id || (state.lastActive === null && state.lastRealActive === id);
     if (strip) {
         var ri = reserveIndex(strip, w);
         if (ri >= 0) {
@@ -1777,7 +1787,7 @@ function onWindowRemoved(w) {
         if (strip.kind !== "zone") reveal(strip, strip.focusedColumn);
         if (heir) { containerFocusWindow(strip, heir); forgetRects(strip); }
         layoutAll(wasActive ? containerFocused(strip) : null);
-        if (wasActive) scheduleRefocus(strip.key);
+        if (wasActive) scheduleRefocus(strip.key, heir);
     } else {
         scheduleLayout();
     }
@@ -1785,6 +1795,7 @@ function onWindowRemoved(w) {
 
 function onWindowActivated(w) {
     state.lastActive = w ? wid(w) : null;
+    if (w) state.lastRealActive = state.lastActive;
     if (!w || state.released) return;
     var strip = stripOf(w);
     if (!strip) return;
